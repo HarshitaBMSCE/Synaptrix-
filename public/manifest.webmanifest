@@ -1,0 +1,10 @@
+{
+  "name": "GigShield",
+  "short_name": "GigShield",
+  "description": "Fair pay. Safer routes. Stronger workers.",
+  "start_url": "/dashboard",
+  "display": "standalone",
+  "background_color": "#f8f5ed",
+  "theme_color": "#14745b",
+  "icons": []
+}
