@@ -22,15 +22,15 @@ export async function POST(request: Request) {
       evidenceAssetIds: input.evidenceAssetIds,
       notes: input.notes,
       extraction: {
-        provider: input.captureMethod === "manual" ? "demo" : "claude",
+        provider: input.captureMethod === "manual" ? "manual" : "claude",
         overallConfidence: input.extractionConfidence,
         fieldConfidence: {},
         warnings: [],
         visibleComponents: input.visibleComponents
       }
     });
-    const profile = await getProfile(userId);
-    const evaluation = evaluateFairness({ job, profile, communityJobs: listCommunityJobs(), extractionConfidence: input.extractionConfidence });
+    const [profile, communityJobs] = await Promise.all([getProfile(userId), listCommunityJobs()]);
+    const evaluation = evaluateFairness({ job, profile, communityJobs, extractionConfidence: input.extractionConfidence });
     return ok({ job, evaluation }, { status: 201 });
   } catch (error) {
     return handleApiError(error);

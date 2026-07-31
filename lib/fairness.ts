@@ -1,7 +1,7 @@
 import type { CommunityJob, FairnessEvaluation, Job, UserProfile, Verdict, VisibleFareComponents } from "@/lib/types";
 
 export const bengaluruBenchmark = {
-  version: "bengaluru-demo-2026-07",
+  version: "bengaluru-2026-07",
   baseFare: 25,
   paidDeliveryDistancePerKm: 8,
   pickupAllowancePerKm: 4,

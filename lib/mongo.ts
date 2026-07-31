@@ -21,3 +21,11 @@ export async function connectMongo() {
   cache.conn = await cache.promise;
   return cache.conn;
 }
+
+export async function requireMongo() {
+  const connection = await connectMongo();
+  if (!connection) {
+    throw new Error("MONGODB_URI is required for user-owned GigShield data.");
+  }
+  return connection;
+}

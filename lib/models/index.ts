@@ -23,6 +23,8 @@ const emergencyContactSchema = new Schema(
 const userProfileSchema = new Schema(
   {
     clerkUserId: { type: String, required: true, index: true, unique: true },
+    role: { type: String, enum: ["worker", "admin"], default: "worker", index: true },
+    status: { type: String, enum: ["active", "suspended"], default: "active", index: true },
     displayName: String,
     phone: String,
     preferredLanguage: { type: String, enum: ["en", "hi", "kn"], default: "en" },
@@ -126,7 +128,10 @@ const communityJobSchema = new Schema(
     timeBand: String,
     payout: Number,
     deductionAmount: Number,
-    occurredAt: Date
+    occurredAt: Date,
+    moderationStatus: { type: String, enum: ["pending", "approved", "rejected", "outlier", "duplicate"], default: "pending", index: true },
+    moderatedBy: String,
+    moderatedAt: Date
   },
   { timestamps: true }
 );
@@ -169,7 +174,58 @@ const incidentSchema = new Schema(
     approximateLocation: String,
     description: String,
     visibility: { type: String, enum: ["private", "community"] },
-    occurredAt: Date
+    occurredAt: Date,
+    moderationStatus: { type: String, enum: ["pending", "approved", "rejected", "resolved"], default: "pending", index: true },
+    severity: { type: String, enum: ["low", "medium", "high"], default: "medium" },
+    moderatedBy: String,
+    moderatedAt: Date
+  },
+  { timestamps: true }
+);
+
+const platformSchema = new Schema(
+  {
+    name: { type: String, required: true, unique: true },
+    category: String,
+    iconRef: String,
+    supportedJobTypes: [String],
+    active: { type: Boolean, default: true, index: true },
+    displayOrder: { type: Number, default: 100 },
+    benchmarkAvailable: { type: Boolean, default: false }
+  },
+  { timestamps: true }
+);
+
+const benchmarkConfigurationSchema = new Schema(
+  {
+    version: { type: String, required: true, index: true },
+    baseFare: Number,
+    paidDeliveryDistancePerKm: Number,
+    pickupAllowancePerKm: Number,
+    activeTimeAllowancePerMinute: Number,
+    waitingAllowancePerMinute: Number,
+    rainBonus: Number,
+    nightPremiumRate: Number,
+    defaultOperatingCostPerKm: Number,
+    minimumHourlyEarningFloor: Number,
+    platformOverrides: Schema.Types.Mixed,
+    effectiveDate: Date,
+    notes: String,
+    createdBy: String
+  },
+  { timestamps: true }
+);
+
+const rightsSnippetSchema = new Schema(
+  {
+    theme: String,
+    jurisdiction: String,
+    snippet: String,
+    sourceTitle: String,
+    reference: String,
+    enabled: { type: Boolean, default: true },
+    translations: Schema.Types.Mixed,
+    disclaimer: String
   },
   { timestamps: true }
 );
@@ -210,7 +266,24 @@ const pushSubscriptionSchema = new Schema(
   { timestamps: true }
 );
 
+const auditLogSchema = new Schema(
+  {
+    actorClerkUserId: { type: String, required: true, index: true },
+    actorRole: { type: String, enum: ["worker", "admin"], required: true },
+    action: { type: String, required: true, index: true },
+    resourceType: { type: String, required: true, index: true },
+    resourceId: String,
+    metadata: Schema.Types.Mixed,
+    reason: String,
+    requestId: String
+  },
+  { timestamps: { createdAt: true, updatedAt: false } }
+);
+
 export const UserProfileModel = mongoose.models.UserProfile ?? mongoose.model("UserProfile", userProfileSchema);
+export const PlatformModel = mongoose.models.Platform ?? mongoose.model("Platform", platformSchema);
+export const BenchmarkConfigurationModel =
+  mongoose.models.BenchmarkConfiguration ?? mongoose.model("BenchmarkConfiguration", benchmarkConfigurationSchema);
 export const JobModel = mongoose.models.Job ?? mongoose.model("Job", jobSchema);
 export const EvidenceAssetModel = mongoose.models.EvidenceAsset ?? mongoose.model("EvidenceAsset", evidenceAssetSchema);
 export const FairnessEvaluationModel =
@@ -222,3 +295,5 @@ export const IncidentModel = mongoose.models.Incident ?? mongoose.model("Inciden
 export const SavingsGoalModel = mongoose.models.SavingsGoal ?? mongoose.model("SavingsGoal", savingsGoalSchema);
 export const NotificationModel = mongoose.models.Notification ?? mongoose.model("Notification", notificationSchema);
 export const PushSubscriptionModel = mongoose.models.PushSubscription ?? mongoose.model("PushSubscription", pushSubscriptionSchema);
+export const RightsSnippetModel = mongoose.models.RightsSnippet ?? mongoose.model("RightsSnippet", rightsSnippetSchema);
+export const AuditLogModel = mongoose.models.AuditLog ?? mongoose.model("AuditLog", auditLogSchema);

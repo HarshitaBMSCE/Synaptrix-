@@ -2,11 +2,12 @@ import { listCommunityJobs, listEvaluations, listJobs, listWorkSessions, getSavi
 import { communityStats } from "@/lib/fairness";
 
 export async function getDashboardSummary(clerkUserId: string, range: "daily" | "weekly" | "monthly" = "daily") {
-  const [jobs, evaluations, sessions, savingsGoal] = await Promise.all([
+  const [jobs, evaluations, sessions, savingsGoal, communityJobs] = await Promise.all([
     listJobs(clerkUserId),
     listEvaluations(clerkUserId),
     listWorkSessions(clerkUserId),
-    getSavingsGoal(clerkUserId)
+    getSavingsGoal(clerkUserId),
+    listCommunityJobs()
   ]);
 
   const now = Date.now();
@@ -67,7 +68,7 @@ export async function getDashboardSummary(clerkUserId: string, range: "daily" | 
       waiting: Math.round(job.waitingMinutes / 6) / 10
     }));
 
-  const community = filteredJobs.slice(0, 3).map((job) => ({ jobId: job.id, platform: job.platform, ...communityStats(job, listCommunityJobs()) }));
+  const community = filteredJobs.slice(0, 3).map((job) => ({ jobId: job.id, platform: job.platform, ...communityStats(job, communityJobs) }));
 
   return {
     range,

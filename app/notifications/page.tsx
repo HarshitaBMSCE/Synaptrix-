@@ -1,30 +1,58 @@
-import { Bell } from "lucide-react";
+import { Bell, ExternalLink } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
-import { Badge, Card } from "@/components/ui";
+import { Badge, Card, EmptyState } from "@/components/ui";
 import { getCurrentUserId } from "@/lib/auth";
 import { listNotifications } from "@/lib/repository";
+import Link from "next/link";
 
 export default async function NotificationsPage() {
   const notifications = await listNotifications(await getCurrentUserId());
+
   return (
-    <AppShell title="Notifications" subtitle="In-app MongoDB notifications plus Web Push service worker and granular opt-in preferences.">
-      <div className="grid gap-4">
-        {notifications.map((notice) => (
-          <Card key={notice.id}>
-            <div className="flex items-start gap-3">
-              <Bell className="text-primary" />
-              <div className="flex-1">
-                <div className="flex flex-wrap items-center gap-2">
-                  <h2 className="font-bold">{notice.title}</h2>
-                  <Badge tone={notice.sensitive ? "amber" : "neutral"}>{notice.sensitive ? "Sensitive hidden on lock screen" : "Non-sensitive"}</Badge>
-                  {!notice.isRead ? <Badge tone="green">New</Badge> : null}
+    <AppShell title="Alert Notifications" subtitle="In-app MongoDB notifications plus Web Push service worker and granular opt-in preferences.">
+      <div className="space-y-4 max-w-4xl">
+        {notifications.length === 0 ? (
+          <EmptyState
+            title="All caught up!"
+            body="You have no new notifications or alerts at this moment."
+          />
+        ) : (
+          notifications.map((notice) => (
+            <Card key={notice.id} className="hover:shadow-sm transition-all duration-200">
+              <div className="flex items-start gap-4">
+                <div className={`h-10 w-10 rounded-xl flex items-center justify-center shrink-0 ${
+                  notice.isRead ? "bg-slate-100 text-slate-400" : "bg-[#F4511E]/10 text-primary"
+                }`}>
+                  <Bell size={20} />
                 </div>
-                <p className="mt-1 text-sm text-muted-foreground">{notice.body}</p>
-                <p className="mt-2 text-xs text-muted-foreground">Deep link: {notice.deepLink}</p>
+                
+                <div className="flex-1 space-y-2">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h4 className="font-extrabold text-sm text-[#202124]">{notice.title}</h4>
+                    <Badge tone={notice.sensitive ? "amber" : "neutral"}>
+                      {notice.sensitive ? "Sensitive (Hidden on Lockscreen)" : "Public"}
+                    </Badge>
+                    {!notice.isRead && (
+                      <span className="inline-flex items-center rounded-full bg-emerald-50 text-emerald-700 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider">
+                        New
+                      </span>
+                    )}
+                  </div>
+                  
+                  <p className="text-xs font-semibold text-slate-600 leading-relaxed">{notice.body}</p>
+                  
+                  {notice.deepLink && (
+                    <div className="pt-2">
+                      <Link href={notice.deepLink} className="inline-flex items-center gap-1 text-xs font-bold text-primary hover:underline">
+                        Navigate to alert details <ExternalLink size={12} />
+                      </Link>
+                    </div>
+                  )}
+                </div>
               </div>
-            </div>
-          </Card>
-        ))}
+            </Card>
+          ))
+        )}
       </div>
     </AppShell>
   );

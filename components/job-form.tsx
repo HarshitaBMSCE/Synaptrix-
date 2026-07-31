@@ -3,7 +3,8 @@
 import { type Resolver, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useState } from "react";
-import { CheckCircle2, Save } from "lucide-react";
+import { CheckCircle2, Save, FileText, Map, AlertCircle } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { Field, inputClass } from "@/components/ui";
 import { jobInputSchema, type JobInput } from "@/lib/validations";
 
@@ -11,21 +12,21 @@ const defaults: JobInput = {
   platform: "Swiggy",
   jobType: "delivery",
   captureMethod: "manual",
-  grossPayout: 112,
-  baseFare: 25,
+  grossPayout: 0,
+  baseFare: 0,
   incentives: 0,
   tips: 0,
-  deductions: 12,
-  unexplainedDeductions: 12,
-  platformDistanceKm: 8.2,
-  routeDistanceKm: 9.1,
-  pickupDistanceKm: 1.4,
-  activeMinutes: 34,
-  waitingMinutes: 12,
+  deductions: 0,
+  unexplainedDeductions: 0,
+  platformDistanceKm: 0,
+  routeDistanceKm: 0,
+  pickupDistanceKm: 0,
+  activeMinutes: 0,
+  waitingMinutes: 0,
   startedAt: new Date().toISOString(),
   completedAt: new Date().toISOString(),
-  originArea: "Indiranagar",
-  destinationArea: "Koramangala",
+  originArea: "",
+  destinationArea: "",
   tolls: 0,
   parking: 0,
   weatherCondition: "rain",
@@ -40,10 +41,11 @@ const defaults: JobInput = {
     deductionReasonVisible: false,
     taxVisible: false
   },
-  extractionConfidence: 90
+  extractionConfidence: 100
 };
 
 export function JobForm({ captureMethod = "manual", initialValues }: { captureMethod?: JobInput["captureMethod"]; initialValues?: Partial<JobInput> }) {
+  const router = useRouter();
   const [status, setStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [message, setMessage] = useState("");
   const form = useForm<JobInput>({
@@ -57,6 +59,7 @@ export function JobForm({ captureMethod = "manual", initialValues }: { captureMe
   const net = gross + tips + incentives - deductions;
 
   async function onSubmit(values: JobInput) {
+    if (status === "saving") return;
     setStatus("saving");
     const response = await fetch("/api/jobs", {
       method: "POST",
@@ -71,98 +74,148 @@ export function JobForm({ captureMethod = "manual", initialValues }: { captureMe
     }
     setStatus("saved");
     setMessage(`Saved ${payload.data.job.platform} job. Fairness verdict: ${payload.data.evaluation.verdict}`);
+    router.push(`/jobs/${payload.data.job.id}`);
   }
 
   return (
-    <form onSubmit={form.handleSubmit(onSubmit)} className="grid gap-4">
-      <div className="grid gap-4 md:grid-cols-3">
-        <Field label="Platform">
-          <select className={inputClass} {...form.register("platform")}>
-            {["Swiggy", "Zomato", "Blinkit", "Uber", "Ola", "Rapido"].map((platform) => (
-              <option key={platform}>{platform}</option>
-            ))}
-          </select>
-        </Field>
-        <Field label="Job type">
-          <select className={inputClass} {...form.register("jobType")}>
-            <option value="delivery">Delivery</option>
-            <option value="ride">Ride</option>
-            <option value="courier">Courier</option>
-            <option value="service">Home service</option>
-          </select>
-        </Field>
-        <Field label="Date and time">
-          <input className={inputClass} type="datetime-local" {...form.register("startedAt")} />
-        </Field>
-      </div>
-      <div className="grid gap-4 md:grid-cols-4">
-        {[
-          ["grossPayout", "Gross payout"],
-          ["baseFare", "Base fare"],
-          ["incentives", "Incentives"],
-          ["tips", "Tips"],
-          ["deductions", "Deductions"],
-          ["unexplainedDeductions", "Unexplained deductions"],
-          ["tolls", "Tolls"],
-          ["parking", "Parking"]
-        ].map(([name, label]) => (
-          <Field key={name} label={label}>
-            <input className={inputClass} type="number" step="0.01" {...form.register(name as keyof JobInput)} />
+    <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+      {/* Platform & General Info Section */}
+      <div className="rounded-2xl border border-slate-100 bg-slate-50/50 p-6 space-y-4">
+        <div className="flex items-center gap-2 border-b border-slate-100 pb-3">
+          <FileText size={18} className="text-primary" />
+          <h3 className="font-bold text-sm text-[#202124]">Platform & Job Type</h3>
+        </div>
+        <div className="grid gap-4 md:grid-cols-3">
+          <Field label="Platform">
+            <select className={inputClass} {...form.register("platform")}>
+              {["Swiggy", "Zomato", "Blinkit", "Uber", "Ola", "Rapido"].map((platform) => (
+                <option key={platform}>{platform}</option>
+              ))}
+            </select>
           </Field>
-        ))}
-      </div>
-      <div className="grid gap-4 md:grid-cols-4">
-        {[
-          ["platformDistanceKm", "Platform distance km"],
-          ["routeDistanceKm", "Route distance km"],
-          ["pickupDistanceKm", "Pickup distance km"],
-          ["activeMinutes", "Active minutes"],
-          ["waitingMinutes", "Waiting minutes"]
-        ].map(([name, label]) => (
-          <Field key={name} label={label}>
-            <input className={inputClass} type="number" step="0.1" {...form.register(name as keyof JobInput)} />
+          <Field label="Job type">
+            <select className={inputClass} {...form.register("jobType")}>
+              <option value="delivery">Delivery</option>
+              <option value="ride">Ride</option>
+              <option value="courier">Courier</option>
+              <option value="service">Home service</option>
+            </select>
           </Field>
-        ))}
-        <Field label="Weather">
-          <select className={inputClass} {...form.register("weatherCondition")}>
-            <option value="clear">Clear</option>
-            <option value="rain">Rain</option>
-            <option value="heavy-rain">Heavy rain</option>
-          </select>
-        </Field>
-        <label className="flex min-h-11 items-center gap-2 rounded-md border border-border bg-white px-3 text-sm font-medium">
-          <input type="checkbox" {...form.register("nightJob")} />
-          Night job
-        </label>
+          <Field label="Date and time">
+            <input className={inputClass} type="datetime-local" {...form.register("startedAt")} />
+          </Field>
+        </div>
       </div>
-      <div className="grid gap-4 md:grid-cols-2">
-        <Field label="Origin area">
-          <input className={inputClass} {...form.register("originArea")} />
-        </Field>
-        <Field label="Destination area">
-          <input className={inputClass} {...form.register("destinationArea")} />
-        </Field>
+
+      {/* Payout Details Section */}
+      <div className="rounded-2xl border border-slate-100 bg-slate-50/50 p-6 space-y-4">
+        <div className="flex items-center gap-2 border-b border-slate-100 pb-3">
+          <FileText size={18} className="text-primary" />
+          <h3 className="font-bold text-sm text-[#202124]">Financial Breakdown (₹)</h3>
+        </div>
+        <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-4">
+          {[
+            ["grossPayout", "Gross payout"],
+            ["baseFare", "Base fare"],
+            ["incentives", "Incentives"],
+            ["tips", "Tips"],
+            ["deductions", "Deductions"],
+            ["unexplainedDeductions", "Unexplained deductions"],
+            ["tolls", "Tolls"],
+            ["parking", "Parking"]
+          ].map(([name, label]) => (
+            <Field key={name} label={label}>
+              <input className={inputClass} type="number" step="0.01" {...form.register(name as keyof JobInput)} />
+            </Field>
+          ))}
+        </div>
       </div>
-      <Field label="Notes">
-        <textarea className={`${inputClass} min-h-28`} {...form.register("notes")} />
+
+      {/* Route & Environment Section */}
+      <div className="rounded-2xl border border-slate-100 bg-slate-50/50 p-6 space-y-4">
+        <div className="flex items-center gap-2 border-b border-slate-100 pb-3">
+          <Map size={18} className="text-primary" />
+          <h3 className="font-bold text-sm text-[#202124]">Distance & Duration</h3>
+        </div>
+        <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-5">
+          {[
+            ["platformDistanceKm", "Platform distance km"],
+            ["routeDistanceKm", "Route distance km"],
+            ["pickupDistanceKm", "Pickup distance km"],
+            ["activeMinutes", "Active minutes"],
+            ["waitingMinutes", "Waiting minutes"]
+          ].map(([name, label]) => (
+            <Field key={name} label={label}>
+              <input className={inputClass} type="number" step="0.1" {...form.register(name as keyof JobInput)} />
+            </Field>
+          ))}
+        </div>
+
+        <div className="grid gap-4 sm:grid-cols-2 pt-2">
+          <Field label="Weather Condition">
+            <select className={inputClass} {...form.register("weatherCondition")}>
+              <option value="clear">Clear</option>
+              <option value="rain">Rain</option>
+              <option value="heavy-rain">Heavy rain</option>
+            </select>
+          </Field>
+          <div className="flex flex-col justify-end">
+            <label className="flex h-12 items-center gap-2.5 rounded-xl border border-input bg-white px-4 text-sm font-semibold cursor-pointer select-none">
+              <input type="checkbox" className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary/20" {...form.register("nightJob")} />
+              Night job
+            </label>
+          </div>
+        </div>
+      </div>
+
+      {/* Origin & Destination area */}
+      <div className="rounded-2xl border border-slate-100 bg-slate-50/50 p-6 space-y-4">
+        <div className="flex items-center gap-2 border-b border-slate-100 pb-3">
+          <Map size={18} className="text-primary" />
+          <h3 className="font-bold text-sm text-[#202124]">Origin & Destination Areas</h3>
+        </div>
+        <div className="grid gap-4 md:grid-cols-2">
+          <Field label="Origin area" hint="e.g. Indiranagar Sector 3">
+            <input className={inputClass} placeholder="Enter origin area" {...form.register("originArea")} />
+          </Field>
+          <Field label="Destination area" hint="e.g. Koramangala block 4">
+            <input className={inputClass} placeholder="Enter destination area" {...form.register("destinationArea")} />
+          </Field>
+        </div>
+      </div>
+
+      <Field label="Worker Notes">
+        <textarea className={`${inputClass} min-h-24 w-full`} placeholder="Add any details, platform dispute ticket numbers, or issues encountered..." {...form.register("notes")} />
       </Field>
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-white p-4">
+
+      {/* Bottom Sticky-style Bar with Calculated Outcome */}
+      <div className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-[#E7E7EA] bg-white p-6 shadow-sm">
         <div>
-          <p className="text-sm text-muted-foreground">Calculated net payout</p>
-          <p className="text-2xl font-bold">₹{Math.max(0, net).toFixed(0)}</p>
+          <p className="text-xs font-bold text-slate-400 uppercase tracking-wide">Calculated Net Payout</p>
+          <p className="text-3xl font-black text-[#202124] mt-1">₹{Math.max(0, net).toFixed(2)}</p>
         </div>
         <div className="flex gap-2">
-          <button type="button" className="inline-flex min-h-11 items-center gap-2 rounded-md border border-border bg-white px-4 text-sm font-semibold">
-            <Save size={18} /> Save draft
+          <button
+            type="submit"
+            disabled={status === "saving"}
+            className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl border border-[#E7E7EA] bg-white px-5 text-sm font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-60 transition-colors"
+          >
+            <Save size={16} /> Save draft
           </button>
-          <button type="submit" className="inline-flex min-h-11 items-center gap-2 rounded-md bg-primary px-4 text-sm font-semibold text-primary-foreground">
-            <CheckCircle2 size={18} /> Save and evaluate
+          <button
+            type="submit"
+            disabled={status === "saving"}
+            className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl bg-primary px-6 text-sm font-bold text-white shadow-sm shadow-primary/10 hover:bg-[#D84315] disabled:opacity-60 transition-colors"
+          >
+            <CheckCircle2 size={16} /> {status === "saving" ? "Saving..." : "Save & Evaluate"}
           </button>
         </div>
       </div>
+
       {message ? (
-        <div className={`rounded-md border p-3 text-sm ${status === "error" ? "border-red-200 bg-red-50 text-red-900" : "border-emerald-200 bg-emerald-50 text-emerald-900"}`}>
-          {message}
+        <div className={`flex items-start gap-2.5 rounded-xl border p-4 text-sm font-semibold leading-relaxed ${status === "error" ? "border-red-200 bg-red-50 text-red-900" : "border-emerald-200 bg-emerald-50 text-emerald-900"}`}>
+          <AlertCircle size={18} className="shrink-0 mt-0.5" />
+          <div>{message}</div>
         </div>
       ) : null}
     </form>

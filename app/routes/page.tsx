@@ -1,32 +1,78 @@
-import { PhoneCall, ShieldAlert } from "lucide-react";
+import { PhoneCall, ShieldAlert, Clipboard, Clock } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
 import { RoutePlanner } from "@/components/route-planner";
-import { Card } from "@/components/ui";
+import { Card, Badge } from "@/components/ui";
 
 export default function RoutesPage() {
   return (
-    <AppShell title="Route safety" subtitle="Server-side Google Routes adapter with seeded Bengaluru fallback and Open-Meteo-ready weather inputs.">
-      <div className="grid gap-5 xl:grid-cols-[1.2fr_0.8fr]">
-        <Card>
+    <AppShell title="Route Safety & Security" subtitle="OpenRouteService route details, weather hazard indicators, and emergency SOS check-ins.">
+      <div className="grid gap-6 lg:grid-cols-[1.5fr_1fr]">
+        
+        {/* Left Side: Route Planner (origin, destination search & alternatives) */}
+        <Card className="space-y-6">
+          <div className="border-b border-slate-50 pb-4 mb-4">
+            <h3 className="font-bold text-base text-[#202124]">Compare route alternatives</h3>
+            <p className="text-xs text-slate-400 mt-0.5">Check weather and road safety risk estimates before starting a delivery.</p>
+          </div>
+          
           <RoutePlanner />
-          <p className="mt-4 text-xs text-muted-foreground">Guidance only — this score cannot guarantee safety.</p>
-        </Card>
-        <Card>
-          <ShieldAlert className="text-red-600" size={28} />
-          <h2 className="mt-3 text-lg font-bold">I feel unsafe</h2>
-          <p className="mt-2 text-sm leading-6 text-muted-foreground">
-            GigShield prepares an alert with worker name, last location, route, timestamp, and a short message. You preview recipients and content before sharing.
+          
+          <p className="text-xs text-slate-400 leading-relaxed italic border-t border-slate-50 pt-4">
+            * Route metrics and safety assessments are informational guidance only and cannot guarantee safety.
           </p>
-          <div className="mt-4 rounded-lg border border-border bg-muted p-4 text-sm">
-            “I may be unsafe near Koramangala at 10:42 PM. Please call me and keep this route open: [location link].”
-          </div>
-          <div className="mt-4 grid gap-2">
-            <button className="min-h-11 rounded-md bg-red-600 px-4 font-semibold text-white" type="button"><PhoneCall className="mr-2 inline" size={18} />Call trusted contact</button>
-            <button className="min-h-11 rounded-md border border-border bg-white px-4 font-semibold" type="button">Copy message</button>
-            <button className="min-h-11 rounded-md border border-border bg-white px-4 font-semibold" type="button">Start check-in countdown</button>
-          </div>
-          <p className="mt-3 text-xs text-muted-foreground">The app never claims delivery without channel confirmation.</p>
         </Card>
+
+        {/* Right Side: Unsafe Alert Panel */}
+        <div className="space-y-6">
+          <Card className="border-red-100 bg-red-50/10">
+            <div className="flex items-center gap-3 border-b border-red-50 pb-4 mb-4">
+              <div className="h-10 w-10 rounded-xl bg-red-100 flex items-center justify-center text-red-700">
+                <ShieldAlert size={20} />
+              </div>
+              <div>
+                <h3 className="font-bold text-base text-[#202124]">Emergency SOS Alert</h3>
+                <Badge tone="red">Not sent</Badge>
+              </div>
+            </div>
+            
+            <p className="text-sm text-slate-600 leading-relaxed">
+              If you feel unsafe on a route, GigShield prepares a pre-formatted alert with your name, last coordinates, route details, and timestamp.
+            </p>
+
+            <div className="mt-4 rounded-xl border border-red-100 bg-white p-4 text-xs font-semibold text-slate-700 leading-relaxed">
+              “I may be unsafe near Koramangala at 10:42 PM. Please call me and keep this route open: [location link].”
+            </div>
+            
+            <div className="mt-6 space-y-3">
+              <button
+                className="flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-red-600 hover:bg-red-700 text-sm font-bold text-white shadow-sm transition-all"
+                type="button"
+              >
+                <PhoneCall size={16} /> Call trusted contact
+              </button>
+              
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  className="flex min-h-11 items-center justify-center gap-1.5 rounded-xl border border-[#E7E7EA] bg-white hover:bg-slate-50 text-xs font-bold text-slate-700 transition-colors"
+                  type="button"
+                >
+                  <Clipboard size={14} /> Copy SMS alert
+                </button>
+                <button
+                  className="flex min-h-11 items-center justify-center gap-1.5 rounded-xl border border-[#E7E7EA] bg-white hover:bg-slate-50 text-xs font-bold text-slate-700 transition-colors"
+                  type="button"
+                >
+                  <Clock size={14} /> Safety countdown
+                </button>
+              </div>
+            </div>
+            
+            <p className="mt-4 text-[10px] text-slate-400 text-center leading-normal">
+              GigShield never automatically shares your location. Preview contacts and message details before copying.
+            </p>
+          </Card>
+        </div>
+
       </div>
     </AppShell>
   );

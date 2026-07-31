@@ -1,11 +1,35 @@
 import { describe, expect, it } from "vitest";
-import { DEMO_USER_ID, demoCommunityJobs, demoProfile } from "@/lib/demo-data";
 import { evaluateFairness } from "@/lib/fairness";
-import type { Job } from "@/lib/types";
+import type { CommunityJob, Job, UserProfile } from "@/lib/types";
+
+const testUserId = "test-worker";
+
+const profile: UserProfile = {
+  id: "profile-test",
+  clerkUserId: testUserId,
+  displayName: "Test worker",
+  preferredLanguage: "en",
+  workerType: "food-delivery",
+  city: "Bengaluru",
+  vehicleType: "scooter",
+  platformsUsed: ["Swiggy"],
+  operatingCostPerKm: 2.8,
+  hourlyEarningsFloor: 140,
+  emergencyContacts: [],
+  consent: {
+    evidenceRetention: false,
+    communityContribution: false,
+    location: false,
+    microphone: false,
+    notifications: false
+  },
+  notificationPreferences: {},
+  onboardingCompleted: false
+};
 
 const baseJob: Job = {
   id: "test-job",
-  clerkUserId: DEMO_USER_ID,
+  clerkUserId: testUserId,
   platform: "Swiggy",
   jobType: "delivery",
   captureMethod: "manual",
@@ -36,13 +60,13 @@ const baseJob: Job = {
 
 describe("fairness engine", () => {
   it("scores a fair job", () => {
-    const evaluation = evaluateFairness({ job: baseJob, profile: demoProfile, communityJobs: [] });
+    const evaluation = evaluateFairness({ job: baseJob, profile, communityJobs: [] });
     expect(evaluation.verdict).toBe("Fair");
     expect(evaluation.finalFairnessScore).toBeGreaterThanOrEqual(85);
   });
 
   it("flags an underpaid job", () => {
-    const evaluation = evaluateFairness({ job: { ...baseJob, netPayout: 40, grossPayout: 40 }, profile: demoProfile, communityJobs: [] });
+    const evaluation = evaluateFairness({ job: { ...baseJob, netPayout: 40, grossPayout: 40 }, profile, communityJobs: [] });
     expect(evaluation.verdict).toMatch(/Underpaid|Severely/);
     expect(evaluation.estimatedGap).toBeGreaterThan(0);
   });
@@ -50,19 +74,19 @@ describe("fairness engine", () => {
   it("penalizes excessive unexplained deduction", () => {
     const evaluation = evaluateFairness({
       job: { ...baseJob, deductions: 50, unexplainedDeductions: 50, grossPayout: 160, netPayout: 110 },
-      profile: demoProfile,
+      profile,
       communityJobs: []
     });
     expect(evaluation.deductionScore).toBeLessThan(50);
   });
 
   it("penalizes distance mismatch", () => {
-    const evaluation = evaluateFairness({ job: { ...baseJob, platformDistanceKm: 4, routeDistanceKm: 8 }, profile: demoProfile, communityJobs: [] });
+    const evaluation = evaluateFairness({ job: { ...baseJob, platformDistanceKm: 4, routeDistanceKm: 8 }, profile, communityJobs: [] });
     expect(evaluation.distanceAccuracyScore).toBe(50);
   });
 
   it("blends reliable community benchmark", () => {
-    const community = Array.from({ length: 6 }, (_, index) => ({
+    const community: CommunityJob[] = Array.from({ length: 6 }, (_, index) => ({
       anonymousContributorId: `anon-${index}`,
       platform: "Swiggy" as const,
       cityZone: "Indiranagar",
@@ -74,18 +98,18 @@ describe("fairness engine", () => {
       deductionAmount: 0,
       occurredAt: "2026-07-25T10:00:00.000Z"
     }));
-    const evaluation = evaluateFairness({ job: baseJob, profile: demoProfile, communityJobs: community });
+    const evaluation = evaluateFairness({ job: baseJob, profile, communityJobs: community });
     expect(evaluation.communitySampleSize).toBe(6);
     expect(evaluation.expectedNet).toBeLessThan(evaluation.formulaExpectedNet);
   });
 
   it("returns insufficient data for missing required data", () => {
-    const evaluation = evaluateFairness({ job: { ...baseJob, activeMinutes: 0 }, profile: demoProfile, communityJobs: [] });
+    const evaluation = evaluateFairness({ job: { ...baseJob, activeMinutes: 0 }, profile, communityJobs: [] });
     expect(evaluation.verdict).toBe("Insufficient data");
   });
 
   it("clamps high scores", () => {
-    const evaluation = evaluateFairness({ job: { ...baseJob, netPayout: 9999, grossPayout: 9999 }, profile: demoProfile, communityJobs: [] });
+    const evaluation = evaluateFairness({ job: { ...baseJob, netPayout: 9999, grossPayout: 9999 }, profile, communityJobs: [] });
     expect(evaluation.farePaymentScore).toBe(100);
     expect(evaluation.finalFairnessScore).toBeLessThanOrEqual(100);
   });
@@ -93,8 +117,8 @@ describe("fairness engine", () => {
   it("handles zero-value edge cases", () => {
     const evaluation = evaluateFairness({
       job: { ...baseJob, grossPayout: 0, netPayout: 0, unexplainedDeductions: 0, platformDistanceKm: 0, routeDistanceKm: 0.1 },
-      profile: demoProfile,
-      communityJobs: demoCommunityJobs
+      profile,
+      communityJobs: []
     });
     expect(Number.isFinite(evaluation.finalFairnessScore)).toBe(true);
   });

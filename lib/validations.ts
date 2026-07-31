@@ -54,19 +54,28 @@ export const jobInputSchema = z.object({
 
 export const uploadPresignSchema = z.object({
   fileName: z.string().min(1).max(160),
-  mimeType: z.string().regex(/^image\/|application\/pdf|text\//),
-  size: z.coerce.number().min(1).max(8 * 1024 * 1024),
+  mimeType: z.enum(["image/png", "image/jpeg", "image/webp", "image/heic"]),
+  category: z.enum(["screenshot", "complaint", "weekly-report", "other"]).default("screenshot"),
+  size: z.coerce.number().min(1).max(10 * 1024 * 1024),
   checksum: z.string().optional()
 });
 
 export const voiceParseSchema = z.object({
-  transcript: z.string().min(5).max(2000)
+  transcript: z.string().trim().min(5).max(2000),
+  language: z.enum(["en-IN", "hi-IN", "kn-IN"]).default("en-IN")
 });
+
+const longitude = z.coerce.number().min(-180).max(180);
+const latitude = z.coerce.number().min(-90).max(90);
+export const coordinateSchema = z.tuple([longitude, latitude]);
 
 export const routeRequestSchema = z.object({
   origin: z.string().min(2).max(120),
   destination: z.string().min(2).max(120),
-  departureTime: z.string().min(1)
+  departureTime: z.string().min(1),
+  originCoordinates: coordinateSchema.optional(),
+  destinationCoordinates: coordinateSchema.optional(),
+  waypoints: z.array(coordinateSchema).max(8).default([])
 });
 
 export const complaintDraftSchema = z.object({

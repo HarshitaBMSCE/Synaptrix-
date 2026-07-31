@@ -7,9 +7,9 @@ export async function POST(request: Request) {
   try {
     const input = communityContributionSchema.parse(await request.json());
     const userId = await getCurrentUserId();
-    const sample = addCommunityJob({
+    const sample = await addCommunityJob({
       ...input,
-      anonymousContributorId: `hash-${userId.slice(-6)}`
+      anonymousContributorId: userId.startsWith("demo-") ? userId : `hash-${userId.slice(-6)}`
     });
     return ok(sample, { status: 201 });
   } catch (error) {

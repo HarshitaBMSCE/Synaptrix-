@@ -1,108 +1,334 @@
-import { DEMO_USER_ID, demoCommunityJobs, demoComplaints, demoEvaluations, demoEvidence, demoJobs, demoNotifications, demoProfile, demoSavingsGoal, demoSessions } from "@/lib/demo-data";
 import { evaluateFairness } from "@/lib/fairness";
-import type { Complaint, EvidenceAsset, Job, Notification, SavingsGoal, UserProfile, WorkSession } from "@/lib/types";
+import {
+  addDemoCommunityJob,
+  getDemoComplaint,
+  getDemoJob,
+  getDemoProfile,
+  getDemoSavingsGoal,
+  isDemoUserId,
+  listDemoCommunityJobs,
+  listDemoComplaints,
+  listDemoEvaluations,
+  listDemoEvidence,
+  listDemoJobs,
+  listDemoNotifications,
+  listDemoWorkSessions,
+  saveDemoComplaint,
+  saveDemoEvidence,
+  saveDemoJob
+} from "@/lib/demo-provider";
+import {
+  CommunityJobModel,
+  ComplaintModel,
+  EvidenceAssetModel,
+  JobModel,
+  NotificationModel,
+  SavingsGoalModel,
+  UserProfileModel,
+  WorkSessionModel
+} from "@/lib/models";
+import { requireMongo } from "@/lib/mongo";
+import type { CommunityJob, Complaint, EvidenceAsset, Job, Notification, SavingsGoal, UserProfile, WorkSession } from "@/lib/types";
 
-const memoryJobs = new Map<string, Job>(demoJobs.map((job) => [job.id, job]));
-const memoryComplaints = new Map<string, Complaint>(demoComplaints.map((complaint) => [complaint.id, complaint]));
-const memoryEvidence = new Map<string, EvidenceAsset>(demoEvidence.map((asset) => [asset.id, asset]));
+type MongoId = {
+  toString(): string;
+};
 
-export async function getProfile(clerkUserId = DEMO_USER_ID): Promise<UserProfile> {
-  return { ...demoProfile, clerkUserId };
+type MongoRecord = {
+  _id: MongoId;
+  createdAt?: Date | string;
+  updatedAt?: Date | string;
+};
+
+type JobRecord = Omit<Job, "id" | "startedAt" | "completedAt"> &
+  MongoRecord & {
+    startedAt: Date | string;
+    completedAt: Date | string;
+  };
+
+type EvidenceRecord = Omit<EvidenceAsset, "id" | "createdAt" | "retentionDate"> &
+  MongoRecord & {
+    retentionDate?: Date | string;
+  };
+
+type ComplaintRecord = Omit<Complaint, "id" | "createdAt"> & MongoRecord;
+type WorkSessionRecord = Omit<WorkSession, "id" | "startedAt" | "endedAt"> &
+  MongoRecord & {
+    startedAt: Date | string;
+    endedAt?: Date | string;
+  };
+type SavingsGoalRecord = Omit<SavingsGoal, "id" | "deadline" | "contributionHistory"> &
+  MongoRecord & {
+    deadline: Date | string;
+    contributionHistory?: Array<{ amount: number; date: Date | string }>;
+  };
+type NotificationRecord = Omit<Notification, "id" | "createdAt"> & MongoRecord;
+type CommunityJobRecord = Omit<CommunityJob, "occurredAt"> &
+  MongoRecord & {
+    occurredAt: Date | string;
+  };
+
+function iso(value: Date | string | undefined) {
+  if (!value) return new Date().toISOString();
+  return value instanceof Date ? value.toISOString() : new Date(value).toISOString();
 }
 
-export async function listJobs(clerkUserId = DEMO_USER_ID): Promise<Job[]> {
-  return [...memoryJobs.values()]
-    .filter((job) => job.clerkUserId === DEMO_USER_ID || job.clerkUserId === clerkUserId)
-    .sort((a, b) => Date.parse(b.startedAt) - Date.parse(a.startedAt));
+function defaultProfile(clerkUserId: string): UserProfile {
+  return {
+    id: "profile-new",
+    clerkUserId,
+    displayName: "Gig worker",
+    preferredLanguage: "en",
+    workerType: "food-delivery",
+    city: "Bengaluru",
+    vehicleType: "scooter",
+    platformsUsed: [],
+    operatingCostPerKm: 2.5,
+    hourlyEarningsFloor: 0,
+    emergencyContacts: [],
+    consent: {
+      evidenceRetention: false,
+      communityContribution: false,
+      location: false,
+      microphone: false,
+      notifications: false
+    },
+    notificationPreferences: {
+      weeklyInsight: false,
+      fatigue: false,
+      complaintFollowUp: false,
+      unsafeWeather: false,
+      savings: false
+    },
+    onboardingCompleted: false
+  };
+}
+
+function toProfile(record: (Partial<UserProfile> & MongoRecord) | null, clerkUserId: string): UserProfile {
+  if (!record) return defaultProfile(clerkUserId);
+  const fallback = defaultProfile(clerkUserId);
+  return {
+    ...fallback,
+    ...record,
+    id: record._id.toString(),
+    clerkUserId
+  };
+}
+
+function toJob(record: JobRecord): Job {
+  return {
+    ...record,
+    id: record._id.toString(),
+    startedAt: iso(record.startedAt),
+    completedAt: iso(record.completedAt)
+  };
+}
+
+function toEvidence(record: EvidenceRecord): EvidenceAsset {
+  return {
+    ...record,
+    id: record._id.toString(),
+    createdAt: iso(record.createdAt),
+    retentionDate: record.retentionDate ? iso(record.retentionDate) : undefined
+  };
+}
+
+function toComplaint(record: ComplaintRecord): Complaint {
+  return {
+    ...record,
+    id: record._id.toString(),
+    createdAt: iso(record.createdAt)
+  };
+}
+
+function toWorkSession(record: WorkSessionRecord): WorkSession {
+  return {
+    ...record,
+    id: record._id.toString(),
+    startedAt: iso(record.startedAt),
+    endedAt: record.endedAt ? iso(record.endedAt) : undefined
+  };
+}
+
+function emptySavingsGoal(clerkUserId: string): SavingsGoal {
+  return {
+    id: "savings-empty",
+    clerkUserId,
+    title: "Set a savings goal",
+    targetAmount: 0,
+    currentAmount: 0,
+    period: "monthly",
+    safeSavingsPercentage: 10,
+    deadline: new Date().toISOString(),
+    contributionHistory: []
+  };
+}
+
+function toSavingsGoal(record: SavingsGoalRecord | null, clerkUserId: string): SavingsGoal {
+  if (!record) return emptySavingsGoal(clerkUserId);
+  return {
+    ...record,
+    id: record._id.toString(),
+    deadline: iso(record.deadline),
+    contributionHistory: (record.contributionHistory ?? []).map((item) => ({ amount: item.amount, date: iso(item.date) }))
+  };
+}
+
+function toNotification(record: NotificationRecord): Notification {
+  return {
+    ...record,
+    id: record._id.toString(),
+    createdAt: iso(record.createdAt)
+  };
+}
+
+function toCommunityJob(record: CommunityJobRecord): CommunityJob {
+  return {
+    anonymousContributorId: record.anonymousContributorId,
+    platform: record.platform,
+    cityZone: record.cityZone,
+    jobType: record.jobType,
+    distanceBucket: record.distanceBucket,
+    durationBucket: record.durationBucket,
+    timeBand: record.timeBand,
+    payout: record.payout,
+    deductionAmount: record.deductionAmount,
+    occurredAt: iso(record.occurredAt)
+  };
+}
+
+export async function getProfile(clerkUserId: string): Promise<UserProfile> {
+  if (isDemoUserId(clerkUserId)) return getDemoProfile(clerkUserId);
+  await requireMongo();
+  const record = (await UserProfileModel.findOne({ clerkUserId }).lean()) as unknown as (Partial<UserProfile> & MongoRecord) | null;
+  return toProfile(record, clerkUserId);
+}
+
+export async function listJobs(clerkUserId: string): Promise<Job[]> {
+  if (isDemoUserId(clerkUserId)) return listDemoJobs(clerkUserId);
+  await requireMongo();
+  const records = (await JobModel.find({ clerkUserId }).sort({ startedAt: -1 }).lean()) as unknown as JobRecord[];
+  return records.map(toJob);
 }
 
 export async function getJob(clerkUserId: string, jobId: string): Promise<Job | null> {
-  const job = memoryJobs.get(jobId);
-  if (!job) return null;
-  return job.clerkUserId === DEMO_USER_ID || job.clerkUserId === clerkUserId ? job : null;
+  if (isDemoUserId(clerkUserId)) return getDemoJob(clerkUserId, jobId);
+  await requireMongo();
+  const record = (await JobModel.findOne({ _id: jobId, clerkUserId }).lean()) as unknown as JobRecord | null;
+  return record ? toJob(record) : null;
 }
 
 export async function saveJob(clerkUserId: string, input: Omit<Job, "id" | "clerkUserId" | "netPayout" | "reviewStatus"> & { reviewStatus?: Job["reviewStatus"] }) {
-  const id = `job-${Date.now()}`;
-  const job: Job = {
+  if (isDemoUserId(clerkUserId)) return saveDemoJob(clerkUserId, input);
+  await requireMongo();
+  const record = await JobModel.create({
     ...input,
-    id,
     clerkUserId,
     netPayout: input.grossPayout + input.tips + input.incentives - input.deductions,
-    reviewStatus: input.reviewStatus ?? "confirmed"
-  };
-  memoryJobs.set(id, job);
-  return job;
+    reviewStatus: input.reviewStatus ?? "confirmed",
+    startedAt: new Date(input.startedAt),
+    completedAt: new Date(input.completedAt)
+  });
+  return toJob(record.toObject() as JobRecord);
 }
 
 export async function deleteJob(clerkUserId: string, jobId: string) {
-  const job = await getJob(clerkUserId, jobId);
-  if (!job || job.clerkUserId !== clerkUserId) return false;
-  memoryJobs.delete(jobId);
-  return true;
+  if (isDemoUserId(clerkUserId)) return false;
+  await requireMongo();
+  const result = await JobModel.deleteOne({ _id: jobId, clerkUserId });
+  return result.deletedCount === 1;
 }
 
 export async function evaluateJob(clerkUserId: string, jobId: string) {
   const profile = await getProfile(clerkUserId);
   const job = await getJob(clerkUserId, jobId);
   if (!job) return null;
-  return evaluateFairness({ job, profile, communityJobs: demoCommunityJobs });
+  return evaluateFairness({ job, profile, communityJobs: await listCommunityJobs() });
 }
 
-export async function listEvaluations(clerkUserId = DEMO_USER_ID) {
-  const jobs = await listJobs(clerkUserId);
-  return jobs.map((job) => evaluateFairness({ job, profile: demoProfile, communityJobs: demoCommunityJobs }));
+export async function listEvaluations(clerkUserId: string) {
+  if (isDemoUserId(clerkUserId)) return listDemoEvaluations(clerkUserId);
+  const [jobs, profile, communityJobs] = await Promise.all([listJobs(clerkUserId), getProfile(clerkUserId), listCommunityJobs()]);
+  return jobs.map((job) => evaluateFairness({ job, profile, communityJobs }));
 }
 
 export async function getEvaluation(clerkUserId: string, jobId: string) {
   return (await listEvaluations(clerkUserId)).find((evaluation) => evaluation.jobId === jobId) ?? null;
 }
 
-export async function listEvidence(clerkUserId = DEMO_USER_ID): Promise<EvidenceAsset[]> {
-  return [...memoryEvidence.values()].filter((asset) => asset.clerkUserId === DEMO_USER_ID || asset.clerkUserId === clerkUserId);
+export async function listEvidence(clerkUserId: string): Promise<EvidenceAsset[]> {
+  if (isDemoUserId(clerkUserId)) return listDemoEvidence(clerkUserId);
+  await requireMongo();
+  const records = (await EvidenceAssetModel.find({ clerkUserId }).sort({ createdAt: -1 }).lean()) as unknown as EvidenceRecord[];
+  return records.map(toEvidence);
 }
 
 export async function saveEvidence(asset: EvidenceAsset) {
-  memoryEvidence.set(asset.id, asset);
-  return asset;
+  if (isDemoUserId(asset.clerkUserId)) return saveDemoEvidence(asset);
+  await requireMongo();
+  const record = await EvidenceAssetModel.create({
+    ...asset,
+    _id: undefined,
+    retentionDate: asset.retentionDate ? new Date(asset.retentionDate) : undefined
+  });
+  return toEvidence(record.toObject() as EvidenceRecord);
 }
 
-export async function listComplaints(clerkUserId = DEMO_USER_ID): Promise<Complaint[]> {
-  return [...memoryComplaints.values()].filter((complaint) => complaint.clerkUserId === DEMO_USER_ID || complaint.clerkUserId === clerkUserId);
+export async function listComplaints(clerkUserId: string): Promise<Complaint[]> {
+  if (isDemoUserId(clerkUserId)) return listDemoComplaints(clerkUserId);
+  await requireMongo();
+  const records = (await ComplaintModel.find({ clerkUserId }).sort({ createdAt: -1 }).lean()) as unknown as ComplaintRecord[];
+  return records.map(toComplaint);
 }
 
 export async function getComplaint(clerkUserId: string, complaintId: string) {
-  const complaint = memoryComplaints.get(complaintId);
-  if (!complaint) return null;
-  return complaint.clerkUserId === DEMO_USER_ID || complaint.clerkUserId === clerkUserId ? complaint : null;
+  if (isDemoUserId(clerkUserId)) return getDemoComplaint(clerkUserId, complaintId);
+  await requireMongo();
+  const record = (await ComplaintModel.findOne({ _id: complaintId, clerkUserId }).lean()) as unknown as ComplaintRecord | null;
+  return record ? toComplaint(record) : null;
 }
 
 export async function saveComplaint(complaint: Complaint) {
-  memoryComplaints.set(complaint.id, complaint);
-  return complaint;
+  if (isDemoUserId(complaint.clerkUserId)) return saveDemoComplaint(complaint);
+  await requireMongo();
+  const record = await ComplaintModel.create({ ...complaint, _id: undefined });
+  return toComplaint(record.toObject() as ComplaintRecord);
 }
 
-export async function listWorkSessions(clerkUserId = DEMO_USER_ID): Promise<WorkSession[]> {
-  return demoSessions.filter((session) => session.clerkUserId === DEMO_USER_ID || session.clerkUserId === clerkUserId);
+export async function listWorkSessions(clerkUserId: string): Promise<WorkSession[]> {
+  if (isDemoUserId(clerkUserId)) return listDemoWorkSessions();
+  await requireMongo();
+  const records = (await WorkSessionModel.find({ clerkUserId }).sort({ startedAt: -1 }).lean()) as unknown as WorkSessionRecord[];
+  return records.map(toWorkSession);
 }
 
-export async function getSavingsGoal(clerkUserId = DEMO_USER_ID): Promise<SavingsGoal> {
-  return { ...demoSavingsGoal, clerkUserId };
+export async function getSavingsGoal(clerkUserId: string): Promise<SavingsGoal> {
+  if (isDemoUserId(clerkUserId)) return getDemoSavingsGoal(clerkUserId);
+  await requireMongo();
+  const record = (await SavingsGoalModel.findOne({ clerkUserId }).sort({ createdAt: -1 }).lean()) as unknown as SavingsGoalRecord | null;
+  return toSavingsGoal(record, clerkUserId);
 }
 
-export async function listNotifications(clerkUserId = DEMO_USER_ID): Promise<Notification[]> {
-  return demoNotifications.filter((notification) => notification.clerkUserId === DEMO_USER_ID || notification.clerkUserId === clerkUserId);
+export async function listNotifications(clerkUserId: string): Promise<Notification[]> {
+  if (isDemoUserId(clerkUserId)) return listDemoNotifications(clerkUserId);
+  await requireMongo();
+  const records = (await NotificationModel.find({ clerkUserId }).sort({ createdAt: -1 }).lean()) as unknown as NotificationRecord[];
+  return records.map(toNotification);
 }
 
-export function listCommunityJobs() {
-  return demoCommunityJobs;
+export async function listCommunityJobs(): Promise<CommunityJob[]> {
+  if (process.env.DEMO_MODE === "true" && !process.env.MONGODB_URI) return listDemoCommunityJobs();
+  await requireMongo();
+  const records = (await CommunityJobModel.find({}).sort({ occurredAt: -1 }).limit(500).lean()) as unknown as CommunityJobRecord[];
+  return records.map(toCommunityJob);
 }
 
-export function addCommunityJob(sample: (typeof demoCommunityJobs)[number]) {
-  demoCommunityJobs.push(sample);
-  return sample;
-}
-
-export function staticEvaluations() {
-  return demoEvaluations;
+export async function addCommunityJob(sample: CommunityJob) {
+  if (isDemoUserId(sample.anonymousContributorId) || (process.env.DEMO_MODE === "true" && !process.env.MONGODB_URI)) return addDemoCommunityJob(sample);
+  await requireMongo();
+  const record = await CommunityJobModel.create({
+    ...sample,
+    occurredAt: new Date(sample.occurredAt)
+  });
+  return toCommunityJob(record.toObject() as CommunityJobRecord);
 }

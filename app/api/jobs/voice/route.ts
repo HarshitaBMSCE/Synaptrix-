@@ -4,8 +4,8 @@ import { voiceParseSchema } from "@/lib/validations";
 
 export async function POST(request: Request) {
   try {
-    const { transcript } = voiceParseSchema.parse(await request.json());
-    const parsed = await parseVoiceTranscript(transcript);
+    const { transcript, language } = voiceParseSchema.parse(await request.json());
+    const parsed = await parseVoiceTranscript(transcript, language);
     const now = new Date().toISOString();
     return ok({
       ...parsed,

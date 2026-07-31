@@ -6,58 +6,68 @@ function anthropic() {
   return process.env.ANTHROPIC_API_KEY ? new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY }) : null;
 }
 
-export async function parseVoiceTranscript(transcript: string) {
+export async function parseVoiceTranscript(transcript: string, language = "en-IN") {
   const lower = transcript.toLowerCase();
-  const payout = Number(lower.match(/(?:paid|payout|₹|rs\.?)\s*(\d+)/)?.[1] ?? lower.match(/(\d+)\s*rupees/)?.[1] ?? 112);
-  const distance = Number(lower.match(/(\d+(?:\.\d+)?)\s*(?:km|kilomet)/)?.[1] ?? 6.2);
-  const minutes = Number(lower.match(/(\d+)\s*(?:min|minutes)/)?.[1] ?? 32);
-  const deduction = Number(lower.match(/(\d+)\s*(?:rupees|rs\.?)\s*deduct/)?.[1] ?? lower.match(/deducted\s*(\d+)/)?.[1] ?? 0);
+  const payout = Number(lower.match(/(?:paid|payout|for|₹|rs\.?)\s*(\d+(?:\.\d+)?)/)?.[1] ?? lower.match(/(\d+(?:\.\d+)?)\s*rupees/)?.[1] ?? 0);
+  const distance = Number(lower.match(/(\d+(?:\.\d+)?)\s*(?:km|kilomet)/)?.[1] ?? 0);
+  const minutes = Number(lower.match(/(\d+)\s*(?:min|minutes)/)?.[1] ?? lower.match(/took\s*(\d+)/)?.[1] ?? 0);
+  const deduction = Number(lower.match(/deduction\s*of\s*(\d+(?:\.\d+)?)/)?.[1] ?? lower.match(/(\d+(?:\.\d+)?)\s*(?:rupees|rs\.?)\s*deduct/)?.[1] ?? lower.match(/deducted\s*(\d+(?:\.\d+)?)/)?.[1] ?? 0);
+  const waiting = Number(lower.match(/waited\s*(?:for)?\s*(\d+)/)?.[1] ?? lower.match(/waiting\s*(?:for)?\s*(\d+)/)?.[1] ?? 0);
   const platform = lower.includes("zomato") ? "Zomato" : lower.includes("blinkit") ? "Blinkit" : lower.includes("uber") ? "Uber" : lower.includes("rapido") ? "Rapido" : "Swiggy";
 
   return {
     platform,
     jobType: platform === "Uber" || platform === "Rapido" ? "ride" : "delivery",
-    grossPayout: payout + deduction,
+    grossPayout: payout,
     baseFare: 25,
     incentives: 0,
     tips: 0,
     deductions: deduction,
     unexplainedDeductions: deduction,
     platformDistanceKm: distance,
-    routeDistanceKm: distance * 1.05,
+    routeDistanceKm: distance,
     pickupDistanceKm: 1,
     activeMinutes: minutes,
-    waitingMinutes: 8,
+    waitingMinutes: waiting,
     originArea: "Bengaluru pickup area",
     destinationArea: "Bengaluru drop area",
-    confidence: 78,
-    warnings: anthropic() ? [] : ["Demo parser used because ANTHROPIC_API_KEY is not configured."]
+    extractionConfidence: 78,
+    language,
+    warnings: anthropic() ? [] : ["Provider fallback parsed the transcript. Review all fields before saving."]
   } as const;
 }
 
 export async function explainAssistantAnswer(args: { message: string; job?: Job | null; language?: string }) {
   const rights = getRightsSnippet(args.message.includes("deduct") ? "Clear deductions" : "Payment transparency");
   const client = anthropic();
-  if (!client) {
+  const fallbackAnswer = () => {
     const jobFacts = args.job
       ? `For ${args.job.platform} job ${args.job.id}, net payout was ₹${args.job.netPayout} over ${args.job.platformDistanceKm} km and ${args.job.activeMinutes} active minutes.`
       : "I can use your recent jobs and dashboard totals to answer this.";
     return `${jobFacts} Relevant theme: ${rights.theme}. ${rights.snippet} This is general information for ${rights.jurisdiction}, not legal advice.`;
+  };
+
+  if (!client) {
+    return fallbackAnswer();
   }
 
-  const response = await client.messages.create({
-    model: "claude-3-5-sonnet-latest",
-    max_tokens: 450,
-    system:
-      "You are GigShield's worker-rights assistant. Use only supplied facts. Distinguish product guidance from legal advice. Never invent platform policy.",
-    messages: [
-      {
-        role: "user",
-        content: JSON.stringify({ question: args.message, job: args.job, rights })
-      }
-    ]
-  });
-  return response.content.map((part) => (part.type === "text" ? part.text : "")).join("\n");
+  try {
+    const response = await client.messages.create({
+      model: "claude-3-5-sonnet-latest",
+      max_tokens: 450,
+      system:
+        "You are GigShield's worker-rights assistant. Use only supplied facts. Distinguish product guidance from legal advice. Never invent platform policy.",
+      messages: [
+        {
+          role: "user",
+          content: JSON.stringify({ question: args.message, job: args.job, rights })
+        }
+      ]
+    });
+    return response.content.map((part) => (part.type === "text" ? part.text : "")).join("\n");
+  } catch {
+    return fallbackAnswer();
+  }
 }
 
 export async function draftComplaint(args: { jobs: Job[]; type: Complaint["type"]; tone: Complaint["tone"] }) {
@@ -79,24 +89,31 @@ export async function draftComplaint(args: { jobs: Job[]; type: Complaint["type"
 
 export async function weeklyNarrative(metrics: unknown) {
   const client = anthropic();
-  if (!client) {
-    return {
-      insight: "Waiting time and deductions are the biggest levers this week.",
-      risk: "A long continuous session created a fatigue warning.",
-      action: "Prioritize shorter routes until the complaint draft is resolved.",
-      narrative: `Demo insight generated from deterministic metrics: ${JSON.stringify(metrics).slice(0, 320)}`
-    };
-  }
-  const response = await client.messages.create({
-    model: "claude-3-5-sonnet-latest",
-    max_tokens: 500,
-    system: "Write a concise weekly insight. Preserve every numeric value from the provided metrics.",
-    messages: [{ role: "user", content: JSON.stringify(metrics) }]
+  const fallbackNarrative = () => ({
+    insight: "Waiting time and deductions are the biggest levers this week.",
+    risk: "A long continuous session created a fatigue warning.",
+    action: "Prioritize shorter routes until the complaint draft is resolved.",
+    narrative: `Provider fallback insight generated from deterministic metrics: ${JSON.stringify(metrics).slice(0, 320)}`
   });
-  return {
-    insight: "Claude weekly insight",
-    risk: "See narrative",
-    action: "See narrative",
-    narrative: response.content.map((part) => (part.type === "text" ? part.text : "")).join("\n")
-  };
+
+  if (!client) {
+    return fallbackNarrative();
+  }
+
+  try {
+    const response = await client.messages.create({
+      model: "claude-3-5-sonnet-latest",
+      max_tokens: 500,
+      system: "Write a concise weekly insight. Preserve every numeric value from the provided metrics.",
+      messages: [{ role: "user", content: JSON.stringify(metrics) }]
+    });
+    return {
+      insight: "Claude weekly insight",
+      risk: "See narrative",
+      action: "See narrative",
+      narrative: response.content.map((part) => (part.type === "text" ? part.text : "")).join("\n")
+    };
+  } catch {
+    return fallbackNarrative();
+  }
 }

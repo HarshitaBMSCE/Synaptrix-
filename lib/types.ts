@@ -79,7 +79,7 @@ export type Job = {
 };
 
 export type ExtractionMetadata = {
-  provider: "claude" | "demo";
+  provider: "claude" | "manual";
   overallConfidence: number;
   fieldConfidence: Record<string, number>;
   warnings: string[];
@@ -198,11 +198,30 @@ export type Notification = {
   createdAt: string;
 };
 
+export type Coordinate = [longitude: number, latitude: number];
+
 export type RouteOption = {
   id: string;
   name: string;
   distanceKm: number;
+  distanceMeters: number;
   etaMinutes: number;
+  durationSeconds: number;
+  geometry: {
+    type: "LineString";
+    coordinates: Coordinate[];
+  } | null;
+  summary: string;
+  origin: {
+    label: string;
+    coordinate: Coordinate | null;
+  };
+  destination: {
+    label: string;
+    coordinate: Coordinate | null;
+  };
+  provider: "openrouteservice" | "deterministic-fallback";
+  fallbackReason?: string;
   safetyScore: number;
   classification: "Lower risk" | "Moderate risk" | "High risk" | "Very high risk";
   riskFactors: string[];
