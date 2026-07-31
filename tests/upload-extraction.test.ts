@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { extractionToJobInput, parseExtractionJson, screenshotExtractionSchema, type ScreenshotExtraction } from "@/lib/extraction";
+import {
+  extractionToJobInput,
+  extractionWarnings,
+  hasUsableScreenshotExtraction,
+  parseExtractionJson,
+  screenshotExtractionSchema,
+  type ScreenshotExtraction
+} from "@/lib/extraction";
 import { validateScreenshotFile } from "@/lib/upload-validation";
 
 function validExtraction(): ScreenshotExtraction {
@@ -58,6 +65,22 @@ describe("screenshot upload and extraction", () => {
   it("strips markdown fences and parses extraction JSON", () => {
     const extraction = validExtraction();
     expect(parseExtractionJson(`\`\`\`json\n${JSON.stringify(extraction)}\n\`\`\``).platform).toBe("Swiggy");
+  });
+
+  it("normalizes missing Claude fields without inventing payout values", () => {
+    const extraction = parseExtractionJson(JSON.stringify({ platform: "Swiggy", jobType: "delivery" }));
+    expect(extraction.grossPayout).toBeNull();
+    expect(extraction.baseFareVisible).toBe(false);
+    expect(extraction.fieldConfidence).toEqual({});
+    expect(extraction.overallConfidence).toBe(0);
+    expect(extraction.warnings[0]).toContain("Claude did not return these extraction fields");
+    expect(hasUsableScreenshotExtraction(extraction)).toBe(false);
+    expect(extractionWarnings(extraction).join(" ")).toContain("No worker payout amount was found");
+  });
+
+  it("marks extraction usable only when a real worker payout is present", () => {
+    expect(hasUsableScreenshotExtraction(validExtraction())).toBe(true);
+    expect(hasUsableScreenshotExtraction({ ...validExtraction(), grossPayout: null })).toBe(false);
   });
 
   it("rejects malformed extraction JSON", () => {

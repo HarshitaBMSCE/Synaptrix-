@@ -27,16 +27,19 @@ export default function SignInPage() {
                 forceRedirectUrl="/dashboard"
                 appearance={{
                   elements: {
-                    formButtonPrimary: "bg-primary hover:bg-[#D84315] text-sm font-semibold rounded-xl min-h-11",
-                    card: "border-0 shadow-none p-0 bg-transparent",
-                    headerTitle: "hidden",
-                    headerSubtitle: "hidden"
+                    rootBox: "w-full",
+                    cardBox: "w-full shadow-none border-0 p-0 m-0",
+                    card: "w-full shadow-none border-0 bg-transparent p-0 m-0",
+                    main: "w-full p-0 m-0",
+                    header: "hidden",
+                    footer: "bg-transparent border-0 mt-4",
+                    formButtonPrimary: "bg-primary hover:bg-[#D84315] text-sm font-semibold rounded-xl min-h-11 w-full"
                   }
                 }}
               />
             ) : (
               <div className="rounded-xl border border-red-100 bg-red-50 p-4 text-sm text-red-700 leading-relaxed">
-                Clerk authentication is not configured. Please add your credentials in <code>.env.local</code>.
+                Clerk keys are required in <code>.env.local</code> before sign-in can run.
               </div>
             )}
           </div>

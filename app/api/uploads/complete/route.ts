@@ -1,6 +1,6 @@
 import { handleApiError, ok } from "@/lib/api";
 import { ForbiddenError, getCurrentAppUser } from "@/lib/auth";
-import { extractScreenshotJob, extractionToJobInput } from "@/lib/extraction";
+import { extractScreenshotJob, extractionToJobInput, extractionWarnings, hasUsableScreenshotExtraction } from "@/lib/extraction";
 import { saveEvidence } from "@/lib/repository";
 import { getPrivateObjectBytes, isS3Configured } from "@/lib/s3";
 
@@ -30,13 +30,17 @@ export async function POST(request: Request) {
     });
     const imageBuffer = await getPrivateObjectBytes(asset.objectKey);
     const { extraction, provider } = await extractScreenshotJob({ buffer: imageBuffer, mimeType: asset.mimeType });
+    const usableExtraction = hasUsableScreenshotExtraction(extraction);
     return ok(
       {
         asset,
         provider,
         label: "Claude extraction",
-        extraction,
-        jobInput: extractionToJobInput(extraction, [asset.id])
+        extraction: {
+          ...extraction,
+          warnings: extractionWarnings(extraction)
+        },
+        jobInput: usableExtraction ? extractionToJobInput(extraction, [asset.id]) : null
       },
       { status: 201 }
     );

@@ -32,13 +32,111 @@ export const screenshotExtractionSchema = z.object({
 
 export type ScreenshotExtraction = z.infer<typeof screenshotExtractionSchema>;
 
+const nullableExtractionKeys = [
+  "platform",
+  "jobType",
+  "grossPayout",
+  "baseFare",
+  "incentives",
+  "tips",
+  "deductions",
+  "unexplainedDeductions",
+  "deductionReason",
+  "distanceKm",
+  "durationMinutes",
+  "waitingMinutes",
+  "pickupDistanceKm",
+  "date",
+  "originArea",
+  "destinationArea"
+] as const;
+
+const visibleExtractionKeys = [
+  "baseFareVisible",
+  "distanceFareVisible",
+  "waitingFareVisible",
+  "incentiveVisible",
+  "deductionReasonVisible",
+  "taxVisible"
+] as const;
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function extractionCandidate(value: unknown) {
+  if (!isRecord(value)) return value;
+  if (isRecord(value.extraction)) return value.extraction;
+  if (isRecord(value.job)) return value.job;
+  if (isRecord(value.data)) return value.data;
+  return value;
+}
+
+function normalizeExtractionPayload(value: unknown) {
+  const candidate = extractionCandidate(value);
+  if (!isRecord(candidate)) return candidate;
+
+  const normalized: Record<string, unknown> = { ...candidate };
+  const missingKeys: string[] = [];
+
+  for (const key of nullableExtractionKeys) {
+    if (!(key in normalized)) {
+      normalized[key] = null;
+      missingKeys.push(key);
+    }
+  }
+
+  for (const key of visibleExtractionKeys) {
+    if (!(key in normalized)) {
+      normalized[key] = false;
+      missingKeys.push(key);
+    }
+  }
+
+  if (!("overallConfidence" in normalized)) {
+    normalized.overallConfidence = 0;
+    missingKeys.push("overallConfidence");
+  }
+  if (!isRecord(normalized.fieldConfidence)) {
+    normalized.fieldConfidence = {};
+    if (!missingKeys.includes("fieldConfidence")) missingKeys.push("fieldConfidence");
+  }
+  if (!Array.isArray(normalized.warnings)) {
+    normalized.warnings = [];
+    if (!missingKeys.includes("warnings")) missingKeys.push("warnings");
+  }
+
+  if (missingKeys.length > 0) {
+    normalized.warnings = [
+      ...(normalized.warnings as string[]),
+      `Claude did not return these extraction fields: ${missingKeys.join(", ")}. Review and fill them before saving.`
+    ];
+  }
+
+  return normalized;
+}
+
+export function hasUsableScreenshotExtraction(extraction: ScreenshotExtraction) {
+  return typeof extraction.grossPayout === "number" && extraction.grossPayout > 0;
+}
+
+export function extractionWarnings(extraction: ScreenshotExtraction) {
+  const warnings = [...extraction.warnings];
+  if (!hasUsableScreenshotExtraction(extraction)) {
+    warnings.push(
+      "No worker payout amount was found. Upload a gig worker earnings/payout screenshot, not a customer order receipt, before saving a job."
+    );
+  }
+  return Array.from(new Set(warnings));
+}
+
 export function stripJsonFences(text: string) {
   return text.replace(/^```(?:json)?/i, "").replace(/```$/i, "").trim();
 }
 
 export function parseExtractionJson(text: string): ScreenshotExtraction {
   const parsed = JSON.parse(stripJsonFences(text)) as unknown;
-  return screenshotExtractionSchema.parse(parsed);
+  return screenshotExtractionSchema.parse(normalizeExtractionPayload(parsed));
 }
 
 function requireAnthropic() {
@@ -49,15 +147,15 @@ function requireAnthropic() {
 }
 
 function anthropicModel() {
-  return process.env.ANTHROPIC_MODEL ?? "claude-3-5-sonnet-latest";
+  return process.env.ANTHROPIC_MODEL ?? "claude-haiku-4-5-20251001";
 }
 
 async function askClaudeForExtraction(image: { base64: string; mimeType: string }, correctionPrompt?: string) {
   const response = await requireAnthropic().messages.create({
     model: anthropicModel(),
     max_tokens: 900,
-    system:
-      "Extract only structured gig job payment data. Return strict JSON only. Use null for unavailable fields. Do not calculate fairness scores.",
+	    system:
+	      "Extract only structured gig worker earning and payout data. Return strict JSON only. Use null for unavailable fields. Do not calculate fairness scores. Do not use customer order totals, item totals, taxes, delivery charges paid by the customer, or restaurant invoice amounts as worker payout.",
     messages: [
       {
         role: "user",
@@ -66,7 +164,7 @@ async function askClaudeForExtraction(image: { base64: string; mimeType: string 
             type: "text",
             text:
               correctionPrompt ??
-              "Extract a gig-platform payment job from this screenshot. Required JSON keys: platform, jobType, grossPayout, baseFare, incentives, tips, deductions, unexplainedDeductions, deductionReason, distanceKm, durationMinutes, waitingMinutes, pickupDistanceKm, date, originArea, destinationArea, baseFareVisible, distanceFareVisible, waitingFareVisible, incentiveVisible, deductionReasonVisible, taxVisible, overallConfidence, fieldConfidence, warnings."
+	              "Extract a gig worker payout or earnings job from this screenshot. Return one JSON object with these exact keys: platform, jobType, grossPayout, baseFare, incentives, tips, deductions, unexplainedDeductions, deductionReason, distanceKm, durationMinutes, waitingMinutes, pickupDistanceKm, date, originArea, destinationArea, baseFareVisible, distanceFareVisible, waitingFareVisible, incentiveVisible, deductionReasonVisible, taxVisible, overallConfidence, fieldConfidence, warnings. Use null for unavailable values, false for unavailable visibility booleans, {} for fieldConfidence when unsure, and [] for warnings when none. If the screenshot is a customer receipt or restaurant invoice instead of worker earnings, keep payout and route fields null and add a warning."
           },
           { type: "image", source: { type: "base64", media_type: image.mimeType as "image/png" | "image/jpeg" | "image/webp" | "image/gif", data: image.base64 } }
         ]
@@ -89,9 +187,9 @@ export async function extractScreenshotJob(image: { buffer: Buffer; mimeType: st
     return { extraction: parseExtractionJson(first), provider: "claude" as const };
   } catch (firstError) {
     const corrected = await askClaudeForExtraction(
-      { base64, mimeType: image.mimeType },
-      `Your previous response failed validation: ${firstError instanceof Error ? firstError.message : "invalid JSON"}. Return corrected strict JSON only.`
-    );
+	      { base64, mimeType: image.mimeType },
+	      `Your previous response failed validation: ${firstError instanceof Error ? firstError.message : "invalid JSON"}. Return corrected strict JSON only with every required key present. Use null for unavailable values, false for unavailable visibility booleans, {} for fieldConfidence when unsure, and [] for warnings when none. Do not use customer order totals, item totals, taxes, delivery charges, or invoice totals as worker payout.`
+	    );
     try {
       return { extraction: parseExtractionJson(corrected), provider: "claude" as const };
     } catch (secondError) {

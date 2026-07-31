@@ -47,7 +47,7 @@ function requireAnthropic() {
 }
 
 function anthropicModel() {
-  return process.env.ANTHROPIC_MODEL ?? "claude-3-5-sonnet-latest";
+  return process.env.ANTHROPIC_MODEL ?? "claude-haiku-4-5-20251001";
 }
 
 function stripJsonFences(text: string) {
