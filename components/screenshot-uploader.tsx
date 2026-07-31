@@ -166,7 +166,7 @@ export function ScreenshotUploader() {
       </div>
 
       <div className="grid gap-4">
-        {label ? <Badge tone={label.includes("Demo") ? "amber" : "green"}>{label}</Badge> : null}
+        {label ? <Badge tone="green">{label}</Badge> : null}
         {warnings.length > 0 ? (
           <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
             <p className="font-bold">Review warnings</p>

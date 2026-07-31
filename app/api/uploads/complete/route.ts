@@ -8,9 +8,11 @@ export async function POST(request: Request) {
   try {
     const body = await request.json();
     const user = await getCurrentAppUser();
-    const demoMode = user.isDemo || body.mode === "demo" || !isS3Configured();
     const objectKey = String(body.objectKey);
-    if (!demoMode && !objectKey.startsWith(`users/${user.clerkUserId}/`)) {
+    if (!isS3Configured()) {
+      throw new Error("AWS S3 credentials are required before screenshots can be processed.");
+    }
+    if (!objectKey.startsWith(`users/${user.clerkUserId}/`)) {
       throw new ForbiddenError("Upload object key does not belong to the authenticated user.");
     }
     const asset = await saveEvidence({
@@ -26,16 +28,13 @@ export async function POST(request: Request) {
       retentionDate: body.retentionDate,
       createdAt: new Date().toISOString()
     });
-    const imageBuffer = demoMode ? undefined : await getPrivateObjectBytes(asset.objectKey);
-    const { extraction, provider } = await extractScreenshotJob(
-      imageBuffer ? { buffer: imageBuffer, mimeType: asset.mimeType } : undefined,
-      demoMode
-    );
+    const imageBuffer = await getPrivateObjectBytes(asset.objectKey);
+    const { extraction, provider } = await extractScreenshotJob({ buffer: imageBuffer, mimeType: asset.mimeType });
     return ok(
       {
         asset,
         provider,
-        label: provider === "demo" ? "Demo extraction" : "Claude extraction",
+        label: "Claude extraction",
         extraction,
         jobInput: extractionToJobInput(extraction, [asset.id])
       },

@@ -11,10 +11,10 @@ describe("RBAC helpers", () => {
   });
 
   it("allows admins to access resources through central helper", () => {
-    expect(canAccessResource("worker-2", { clerkUserId: "admin-1", role: "admin", isDemo: false })).toBe(true);
+    expect(canAccessResource("worker-2", { clerkUserId: "admin-1", role: "admin" })).toBe(true);
   });
 
   it("does not allow workers to access another worker through central helper", () => {
-    expect(canAccessResource("worker-2", { clerkUserId: "worker-1", role: "worker", isDemo: false })).toBe(false);
+    expect(canAccessResource("worker-2", { clerkUserId: "worker-1", role: "worker" })).toBe(false);
   });
 });

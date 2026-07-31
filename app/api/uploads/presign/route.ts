@@ -7,14 +7,8 @@ export async function POST(request: Request) {
   try {
     const user = await getCurrentAppUser();
     const input = uploadPresignSchema.parse(await request.json());
-    if (user.isDemo || !isS3Configured()) {
-      return ok({
-        mode: "demo",
-        objectKey: `demo/${user.clerkUserId}/screenshots/${Date.now()}-${input.fileName}`,
-        uploadUrl: null,
-        headers: {},
-        message: "Demo extraction mode is active because S3 is unavailable or demo mode is selected."
-      });
+    if (!isS3Configured()) {
+      throw new Error("AWS S3 credentials are required before screenshots can be uploaded.");
     }
     const upload = await createPresignedUpload({ clerkUserId: user.clerkUserId, ...input });
     return ok({ mode: "s3", ...upload });

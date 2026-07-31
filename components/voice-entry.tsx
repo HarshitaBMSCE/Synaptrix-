@@ -60,10 +60,10 @@ const exampleTranscript =
 function recognitionErrorMessage(error: string) {
   if (error === "not-allowed" || error === "service-not-allowed") return "Microphone permission was denied. Type or paste your job description below.";
   if (error === "no-speech") return "No speech was detected. Try again or use the typed transcript box.";
-  if (error === "audio-capture") return "Audio capture is unavailable on this device. The typed fallback still works.";
+  if (error === "audio-capture") return "Audio capture is unavailable on this device. Type or paste the transcript below.";
   if (error === "network") return "Speech recognition had a network problem. Please retry or type the transcript.";
   if (error === "aborted") return "Listening stopped.";
-  return "Speech recognition stopped unexpectedly. The typed fallback still works.";
+  return "Speech recognition stopped unexpectedly. Type or paste the transcript below.";
 }
 
 export function VoiceEntry({ initialLanguage = "en-IN" }: { initialLanguage?: SpeechLanguage }) {

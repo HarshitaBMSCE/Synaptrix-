@@ -78,76 +78,65 @@ describe("OpenRouteService routing adapter", () => {
     expect(requestBody.coordinates).toEqual([origin, waypoint, destination]);
   });
 
-  it("uses deterministic fallback when the API key is missing", async () => {
+  it("returns an error when the API key is missing", async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
     const { getRouteOptions } = await freshMapsModule();
 
-    const routes = await getRouteOptions({
+    await expect(getRouteOptions({
       origin: "Indiranagar",
       destination: "Koramangala",
       originCoordinates: origin,
       destinationCoordinates: destination,
       departureTime: "2026-07-31T10:00:00.000Z",
       fatigueScore: 0
-    });
+    })).rejects.toThrow("OPENROUTESERVICE_API_KEY");
 
     expect(fetchMock).not.toHaveBeenCalled();
-    expect(routes[0]?.provider).toBe("deterministic-fallback");
-    expect(routes[0]?.fallbackReason).toContain("OPENROUTESERVICE_API_KEY");
   });
 
-  it("uses deterministic fallback when OpenRouteService fails", async () => {
+  it("returns an error when OpenRouteService fails", async () => {
     vi.stubEnv("OPENROUTESERVICE_API_KEY", "ors-test-key");
     vi.stubGlobal("fetch", vi.fn(async () => new Response("unavailable", { status: 503 })));
     const { getRouteOptions } = await freshMapsModule();
 
-    const routes = await getRouteOptions({
+    await expect(getRouteOptions({
       origin: "Indiranagar",
       destination: "Koramangala",
       originCoordinates: origin,
       destinationCoordinates: destination,
       departureTime: "2026-07-31T10:00:00.000Z",
       fatigueScore: 0
-    });
-
-    expect(routes[0]?.provider).toBe("deterministic-fallback");
-    expect(routes[0]?.fallbackReason).toContain("temporarily unavailable");
+    })).rejects.toThrow("temporarily unavailable");
   });
 
-  it("uses deterministic fallback for malformed OpenRouteService responses", async () => {
+  it("returns an error for malformed OpenRouteService responses", async () => {
     vi.stubEnv("OPENROUTESERVICE_API_KEY", "ors-test-key");
     vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ features: [{ properties: {} }] }), { status: 200 })));
     const { getRouteOptions } = await freshMapsModule();
 
-    const routes = await getRouteOptions({
+    await expect(getRouteOptions({
       origin: "Indiranagar",
       destination: "Koramangala",
       originCoordinates: origin,
       destinationCoordinates: destination,
       departureTime: "2026-07-31T10:00:00.000Z",
       fatigueScore: 0
-    });
-
-    expect(routes[0]?.provider).toBe("deterministic-fallback");
-    expect(routes[0]?.fallbackReason).toContain("unexpected format");
+    })).rejects.toThrow("unexpected format");
   });
 
-  it("uses deterministic fallback for rate-limit responses", async () => {
+  it("returns an error for rate-limit responses", async () => {
     vi.stubEnv("OPENROUTESERVICE_API_KEY", "ors-test-key");
     vi.stubGlobal("fetch", vi.fn(async () => new Response("too many requests", { status: 429 })));
     const { getRouteOptions } = await freshMapsModule();
 
-    const routes = await getRouteOptions({
+    await expect(getRouteOptions({
       origin: "Indiranagar",
       destination: "Koramangala",
       originCoordinates: origin,
       destinationCoordinates: destination,
       departureTime: "2026-07-31T10:00:00.000Z",
       fatigueScore: 0
-    });
-
-    expect(routes[0]?.provider).toBe("deterministic-fallback");
-    expect(routes[0]?.fallbackReason).toContain("rate limit");
+    })).rejects.toThrow("rate limit");
   });
 });

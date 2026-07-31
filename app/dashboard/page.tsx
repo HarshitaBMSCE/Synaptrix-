@@ -46,11 +46,7 @@ export default async function DashboardPage() {
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          {user.isDemo ? (
-            <Badge tone="amber">Demo Mode active</Badge>
-          ) : (
-            <Badge tone="green">Verified Account</Badge>
-          )}
+          <Badge tone="green">Verified Account</Badge>
           {user.role === "admin" ? (
             <div className="flex items-center gap-2">
               <Badge tone="green">Admin</Badge>

@@ -48,10 +48,10 @@ type OpenRouteServiceResponse = {
   features?: OpenRouteServiceFeature[];
 };
 
-class RoutingFallbackError extends Error {
+class RoutingProviderError extends Error {
   constructor(message: string) {
     super(message);
-    this.name = "RoutingFallbackError";
+    this.name = "RoutingProviderError";
   }
 }
 
@@ -98,22 +98,22 @@ function cacheKey(coordinates: Coordinate[]) {
 
 function normalizeGeometryCoordinates(value: unknown): Coordinate[] {
   if (!Array.isArray(value)) {
-    throw new RoutingFallbackError("OpenRouteService returned route geometry in an unexpected format.");
+    throw new RoutingProviderError("OpenRouteService returned route geometry in an unexpected format.");
   }
 
   const coordinates = value.map((point) => {
     if (!Array.isArray(point) || point.length < 2) {
-      throw new RoutingFallbackError("OpenRouteService returned malformed route coordinates.");
+      throw new RoutingProviderError("OpenRouteService returned malformed route coordinates.");
     }
     const coordinate: Coordinate = [Number(point[0]), Number(point[1])];
     if (!isValidCoordinate(coordinate)) {
-      throw new RoutingFallbackError("OpenRouteService returned invalid coordinate values.");
+      throw new RoutingProviderError("OpenRouteService returned invalid coordinate values.");
     }
     return coordinate;
   });
 
   if (coordinates.length < 2) {
-    throw new RoutingFallbackError("OpenRouteService returned a route without enough geometry points.");
+    throw new RoutingProviderError("OpenRouteService returned a route without enough geometry points.");
   }
 
   return coordinates;
@@ -122,7 +122,7 @@ function normalizeGeometryCoordinates(value: unknown): Coordinate[] {
 function normalizeOpenRouteServiceResponse(payload: OpenRouteServiceResponse): NormalizedOpenRouteServiceRoute[] {
   const features = payload.features ?? [];
   if (features.length === 0) {
-    throw new RoutingFallbackError("OpenRouteService did not find a route.");
+    throw new RoutingProviderError("OpenRouteService did not find a route.");
   }
 
   return features.map((feature, index) => {
@@ -131,7 +131,7 @@ function normalizeOpenRouteServiceResponse(payload: OpenRouteServiceResponse): N
     const coordinates = normalizeGeometryCoordinates(feature.geometry?.coordinates);
 
     if (!Number.isFinite(distanceMeters) || distanceMeters <= 0 || !Number.isFinite(durationSeconds) || durationSeconds <= 0) {
-      throw new RoutingFallbackError("OpenRouteService returned a malformed route summary.");
+      throw new RoutingProviderError("OpenRouteService returned a malformed route summary.");
     }
 
     return {
@@ -147,7 +147,7 @@ function normalizeOpenRouteServiceResponse(payload: OpenRouteServiceResponse): N
 async function fetchOpenRouteServiceRoutes(coordinates: Coordinate[]): Promise<NormalizedOpenRouteServiceRoute[]> {
   const apiKey = process.env.OPENROUTESERVICE_API_KEY;
   if (!apiKey) {
-    throw new RoutingFallbackError("OPENROUTESERVICE_API_KEY is missing.");
+    throw new RoutingProviderError("OPENROUTESERVICE_API_KEY is missing.");
   }
 
   const key = cacheKey(coordinates);
@@ -177,16 +177,16 @@ async function fetchOpenRouteServiceRoutes(coordinates: Coordinate[]): Promise<N
     });
 
     if (response.status === 401 || response.status === 403) {
-      throw new RoutingFallbackError("OpenRouteService authentication failed.");
+      throw new RoutingProviderError("OpenRouteService authentication failed.");
     }
     if (response.status === 429) {
-      throw new RoutingFallbackError("OpenRouteService rate limit reached.");
+      throw new RoutingProviderError("OpenRouteService rate limit reached.");
     }
     if (response.status >= 500) {
-      throw new RoutingFallbackError("OpenRouteService is temporarily unavailable.");
+      throw new RoutingProviderError("OpenRouteService is temporarily unavailable.");
     }
     if (!response.ok) {
-      throw new RoutingFallbackError(`OpenRouteService request failed with status ${response.status}.`);
+      throw new RoutingProviderError(`OpenRouteService request failed with status ${response.status}.`);
     }
 
     const payload = (await response.json()) as OpenRouteServiceResponse;
@@ -194,13 +194,13 @@ async function fetchOpenRouteServiceRoutes(coordinates: Coordinate[]): Promise<N
     routeCache.set(key, { routes, expiresAt: Date.now() + CACHE_TTL_MS });
     return routes;
   } catch (error) {
-    if (error instanceof RoutingFallbackError) {
+    if (error instanceof RoutingProviderError) {
       throw error;
     }
     if (error instanceof Error && error.name === "AbortError") {
-      throw new RoutingFallbackError("OpenRouteService request timed out.");
+      throw new RoutingProviderError("OpenRouteService request timed out.");
     }
-    throw new RoutingFallbackError("OpenRouteService request could not be completed.");
+    throw new RoutingProviderError("OpenRouteService request could not be completed.");
   } finally {
     clearTimeout(timeout);
   }
@@ -215,7 +215,6 @@ function applySafetyScoring(args: {
   departureTime: string;
   fatigueScore: number;
   provider: RouteOption["provider"];
-  fallbackReason?: string;
 }): RouteOption[] {
   const options = args.routes.map((route) => {
     const distanceKm = Math.round((route.distanceMeters / 1000) * 10) / 10;
@@ -225,8 +224,8 @@ function applySafetyScoring(args: {
       etaMinutes,
       departureTime: args.departureTime,
       weather: "rain",
-      incidentHotspotLevel: args.provider === "deterministic-fallback" ? 1 : 0,
-      safePlaceDensity: args.provider === "deterministic-fallback" ? 8 : 7,
+      incidentHotspotLevel: 0,
+      safePlaceDensity: 7,
       fatigueScore: args.fatigueScore,
       detourPercent: 0
     });
@@ -243,75 +242,7 @@ function applySafetyScoring(args: {
       origin: { label: args.originLabel, coordinate: args.originCoordinate },
       destination: { label: args.destinationLabel, coordinate: args.destinationCoordinate },
       provider: args.provider,
-      fallbackReason: args.fallbackReason,
       weather: "rain",
-      fastest: false,
-      recommended: false,
-      ...scored
-    };
-  });
-
-  const fastest = options.reduce((best, option) => (option.etaMinutes < best.etaMinutes ? option : best), options[0]);
-  const recommended = options.reduce((best, option) => (option.safetyScore > best.safetyScore ? option : best), options[0]);
-
-  return options.map((option) => ({
-    ...option,
-    fastest: option.id === fastest.id,
-    recommended: option.id === recommended.id
-  }));
-}
-
-function fallbackRoutes(args: RouteRequest, fallbackReason: string, originCoordinate: Coordinate | null, destinationCoordinate: Coordinate | null): RouteOption[] {
-  const deterministicRoutes = [
-    { id: "route-1", name: "Outer Ring Road via Indiranagar", distanceKm: 13.4, etaMinutes: 38, weather: "rain", incidentHotspotLevel: 1, safePlaceDensity: 8, detourPercent: 0 },
-    { id: "route-2", name: "Old Airport Road and Domlur", distanceKm: 14.8, etaMinutes: 43, weather: "rain", incidentHotspotLevel: 0, safePlaceDensity: 10, detourPercent: 10 },
-    { id: "route-3", name: "Inner lanes through Ejipura", distanceKm: 12.9, etaMinutes: 36, weather: "rain", incidentHotspotLevel: 3, safePlaceDensity: 3, detourPercent: 0 },
-    { id: "route-4", name: "100 Feet Road safer pickup corridor", distanceKm: 15.2, etaMinutes: 45, weather: "rain", incidentHotspotLevel: 0, safePlaceDensity: 9, detourPercent: 14 }
-  ] as const;
-
-  const normalized = deterministicRoutes.map((route) => {
-    const distanceMeters = Math.round(route.distanceKm * 1000);
-    const durationSeconds = route.etaMinutes * 60;
-    const geometryCoordinates = originCoordinate && destinationCoordinate ? [originCoordinate, destinationCoordinate] : [];
-    return {
-      id: route.id,
-      distanceMeters,
-      durationSeconds,
-      geometry: {
-        type: "LineString" as const,
-        coordinates: geometryCoordinates
-      },
-      summary: `${route.name}: ${route.distanceKm} km, ${route.etaMinutes} min`
-    };
-  });
-
-  const options = normalized.map((route, index) => {
-    const source = deterministicRoutes[index];
-    const scored = scoreRoute({
-      distanceKm: source.distanceKm,
-      etaMinutes: source.etaMinutes,
-      departureTime: args.departureTime,
-      weather: source.weather,
-      incidentHotspotLevel: source.incidentHotspotLevel,
-      safePlaceDensity: source.safePlaceDensity,
-      fatigueScore: args.fatigueScore,
-      detourPercent: source.detourPercent
-    });
-
-    return {
-      id: source.id,
-      name: source.name,
-      distanceKm: source.distanceKm,
-      distanceMeters: route.distanceMeters,
-      etaMinutes: source.etaMinutes,
-      durationSeconds: route.durationSeconds,
-      geometry: route.geometry.coordinates.length > 0 ? route.geometry : null,
-      summary: route.summary,
-      origin: { label: args.origin, coordinate: originCoordinate },
-      destination: { label: args.destination, coordinate: destinationCoordinate },
-      provider: "deterministic-fallback" as const,
-      fallbackReason,
-      weather: source.weather,
       fastest: false,
       recommended: false,
       ...scored
@@ -334,27 +265,22 @@ export async function getRouteOptions(args: RouteRequest): Promise<RouteOption[]
   const waypoints = args.waypoints ?? [];
 
   if (!originCoordinate || !destinationCoordinate || waypoints.some((coordinate) => !isValidCoordinate(coordinate))) {
-    return fallbackRoutes(args, "Invalid or unresolved coordinates; using deterministic Bengaluru fallback.", originCoordinate, destinationCoordinate);
+    throw new RoutingProviderError("Invalid or unresolved coordinates.");
   }
 
   const coordinates = [originCoordinate, ...waypoints, destinationCoordinate];
 
-  try {
-    const routes = await fetchOpenRouteServiceRoutes(coordinates);
-    return applySafetyScoring({
-      routes,
-      originLabel: args.origin,
-      destinationLabel: args.destination,
-      originCoordinate,
-      destinationCoordinate,
-      departureTime: args.departureTime,
-      fatigueScore: args.fatigueScore,
-      provider: "openrouteservice"
-    });
-  } catch (error) {
-    const fallbackReason = error instanceof Error ? error.message : "OpenRouteService failed; using deterministic Bengaluru fallback.";
-    return fallbackRoutes(args, fallbackReason, originCoordinate, destinationCoordinate);
-  }
+  const routes = await fetchOpenRouteServiceRoutes(coordinates);
+  return applySafetyScoring({
+    routes,
+    originLabel: args.origin,
+    destinationLabel: args.destination,
+    originCoordinate,
+    destinationCoordinate,
+    departureTime: args.departureTime,
+    fatigueScore: args.fatigueScore,
+    provider: "openrouteservice"
+  });
 }
 
 export const openRouteServiceDiagnostics = {

@@ -22,7 +22,7 @@ export async function POST(request: Request) {
       requestedRemedy: draft.requestedRemedy,
       status: "draft",
       attachmentAssetIds: jobs.flatMap((job) => job.evidenceAssetIds),
-      generatedByClaude: Boolean(process.env.ANTHROPIC_API_KEY),
+      generatedByClaude: true,
       createdAt: new Date().toISOString()
     });
     return ok(complaint, { status: 201 });

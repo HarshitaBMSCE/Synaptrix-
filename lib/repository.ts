@@ -1,23 +1,5 @@
 import { evaluateFairness } from "@/lib/fairness";
 import {
-  addDemoCommunityJob,
-  getDemoComplaint,
-  getDemoJob,
-  getDemoProfile,
-  getDemoSavingsGoal,
-  isDemoUserId,
-  listDemoCommunityJobs,
-  listDemoComplaints,
-  listDemoEvaluations,
-  listDemoEvidence,
-  listDemoJobs,
-  listDemoNotifications,
-  listDemoWorkSessions,
-  saveDemoComplaint,
-  saveDemoEvidence,
-  saveDemoJob
-} from "@/lib/demo-provider";
-import {
   CommunityJobModel,
   ComplaintModel,
   EvidenceAssetModel,
@@ -106,9 +88,9 @@ function defaultProfile(clerkUserId: string): UserProfile {
 
 function toProfile(record: (Partial<UserProfile> & MongoRecord) | null, clerkUserId: string): UserProfile {
   if (!record) return defaultProfile(clerkUserId);
-  const fallback = defaultProfile(clerkUserId);
+  const baseProfile = defaultProfile(clerkUserId);
   return {
-    ...fallback,
+    ...baseProfile,
     ...record,
     id: record._id.toString(),
     clerkUserId
@@ -198,28 +180,24 @@ function toCommunityJob(record: CommunityJobRecord): CommunityJob {
 }
 
 export async function getProfile(clerkUserId: string): Promise<UserProfile> {
-  if (isDemoUserId(clerkUserId)) return getDemoProfile(clerkUserId);
   await requireMongo();
   const record = (await UserProfileModel.findOne({ clerkUserId }).lean()) as unknown as (Partial<UserProfile> & MongoRecord) | null;
   return toProfile(record, clerkUserId);
 }
 
 export async function listJobs(clerkUserId: string): Promise<Job[]> {
-  if (isDemoUserId(clerkUserId)) return listDemoJobs(clerkUserId);
   await requireMongo();
   const records = (await JobModel.find({ clerkUserId }).sort({ startedAt: -1 }).lean()) as unknown as JobRecord[];
   return records.map(toJob);
 }
 
 export async function getJob(clerkUserId: string, jobId: string): Promise<Job | null> {
-  if (isDemoUserId(clerkUserId)) return getDemoJob(clerkUserId, jobId);
   await requireMongo();
   const record = (await JobModel.findOne({ _id: jobId, clerkUserId }).lean()) as unknown as JobRecord | null;
   return record ? toJob(record) : null;
 }
 
 export async function saveJob(clerkUserId: string, input: Omit<Job, "id" | "clerkUserId" | "netPayout" | "reviewStatus"> & { reviewStatus?: Job["reviewStatus"] }) {
-  if (isDemoUserId(clerkUserId)) return saveDemoJob(clerkUserId, input);
   await requireMongo();
   const record = await JobModel.create({
     ...input,
@@ -233,7 +211,6 @@ export async function saveJob(clerkUserId: string, input: Omit<Job, "id" | "cler
 }
 
 export async function deleteJob(clerkUserId: string, jobId: string) {
-  if (isDemoUserId(clerkUserId)) return false;
   await requireMongo();
   const result = await JobModel.deleteOne({ _id: jobId, clerkUserId });
   return result.deletedCount === 1;
@@ -247,7 +224,6 @@ export async function evaluateJob(clerkUserId: string, jobId: string) {
 }
 
 export async function listEvaluations(clerkUserId: string) {
-  if (isDemoUserId(clerkUserId)) return listDemoEvaluations(clerkUserId);
   const [jobs, profile, communityJobs] = await Promise.all([listJobs(clerkUserId), getProfile(clerkUserId), listCommunityJobs()]);
   return jobs.map((job) => evaluateFairness({ job, profile, communityJobs }));
 }
@@ -257,14 +233,12 @@ export async function getEvaluation(clerkUserId: string, jobId: string) {
 }
 
 export async function listEvidence(clerkUserId: string): Promise<EvidenceAsset[]> {
-  if (isDemoUserId(clerkUserId)) return listDemoEvidence(clerkUserId);
   await requireMongo();
   const records = (await EvidenceAssetModel.find({ clerkUserId }).sort({ createdAt: -1 }).lean()) as unknown as EvidenceRecord[];
   return records.map(toEvidence);
 }
 
 export async function saveEvidence(asset: EvidenceAsset) {
-  if (isDemoUserId(asset.clerkUserId)) return saveDemoEvidence(asset);
   await requireMongo();
   const record = await EvidenceAssetModel.create({
     ...asset,
@@ -275,56 +249,48 @@ export async function saveEvidence(asset: EvidenceAsset) {
 }
 
 export async function listComplaints(clerkUserId: string): Promise<Complaint[]> {
-  if (isDemoUserId(clerkUserId)) return listDemoComplaints(clerkUserId);
   await requireMongo();
   const records = (await ComplaintModel.find({ clerkUserId }).sort({ createdAt: -1 }).lean()) as unknown as ComplaintRecord[];
   return records.map(toComplaint);
 }
 
 export async function getComplaint(clerkUserId: string, complaintId: string) {
-  if (isDemoUserId(clerkUserId)) return getDemoComplaint(clerkUserId, complaintId);
   await requireMongo();
   const record = (await ComplaintModel.findOne({ _id: complaintId, clerkUserId }).lean()) as unknown as ComplaintRecord | null;
   return record ? toComplaint(record) : null;
 }
 
 export async function saveComplaint(complaint: Complaint) {
-  if (isDemoUserId(complaint.clerkUserId)) return saveDemoComplaint(complaint);
   await requireMongo();
   const record = await ComplaintModel.create({ ...complaint, _id: undefined });
   return toComplaint(record.toObject() as ComplaintRecord);
 }
 
 export async function listWorkSessions(clerkUserId: string): Promise<WorkSession[]> {
-  if (isDemoUserId(clerkUserId)) return listDemoWorkSessions();
   await requireMongo();
   const records = (await WorkSessionModel.find({ clerkUserId }).sort({ startedAt: -1 }).lean()) as unknown as WorkSessionRecord[];
   return records.map(toWorkSession);
 }
 
 export async function getSavingsGoal(clerkUserId: string): Promise<SavingsGoal> {
-  if (isDemoUserId(clerkUserId)) return getDemoSavingsGoal(clerkUserId);
   await requireMongo();
   const record = (await SavingsGoalModel.findOne({ clerkUserId }).sort({ createdAt: -1 }).lean()) as unknown as SavingsGoalRecord | null;
   return toSavingsGoal(record, clerkUserId);
 }
 
 export async function listNotifications(clerkUserId: string): Promise<Notification[]> {
-  if (isDemoUserId(clerkUserId)) return listDemoNotifications(clerkUserId);
   await requireMongo();
   const records = (await NotificationModel.find({ clerkUserId }).sort({ createdAt: -1 }).lean()) as unknown as NotificationRecord[];
   return records.map(toNotification);
 }
 
 export async function listCommunityJobs(): Promise<CommunityJob[]> {
-  if (process.env.DEMO_MODE === "true" && !process.env.MONGODB_URI) return listDemoCommunityJobs();
   await requireMongo();
   const records = (await CommunityJobModel.find({}).sort({ occurredAt: -1 }).limit(500).lean()) as unknown as CommunityJobRecord[];
   return records.map(toCommunityJob);
 }
 
 export async function addCommunityJob(sample: CommunityJob) {
-  if (isDemoUserId(sample.anonymousContributorId) || (process.env.DEMO_MODE === "true" && !process.env.MONGODB_URI)) return addDemoCommunityJob(sample);
   await requireMongo();
   const record = await CommunityJobModel.create({
     ...sample,

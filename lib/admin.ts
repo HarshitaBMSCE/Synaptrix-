@@ -12,7 +12,6 @@ import {
   UserProfileModel
 } from "@/lib/models";
 import { requireMongo } from "@/lib/mongo";
-import { isDemoUserId } from "@/lib/demo-provider";
 
 type AdminAuditLog = {
   id: string;
@@ -71,19 +70,6 @@ const seededPlatforms: AdminPlatformSummary[] = [
   { name: "Rapido", category: "Bike taxi", supportedJobTypes: ["ride"], active: true, displayOrder: 6, benchmarkAvailable: true }
 ];
 
-const demoAuditLogs: AdminAuditLog[] = [
-  {
-    id: "demo-audit-1",
-    actorClerkUserId: "demo-admin",
-    actorRole: "admin",
-    action: "benchmark.viewed",
-    resourceType: "BenchmarkConfiguration",
-    resourceId: bengaluruBenchmark.version,
-    metadata: { source: "demo" },
-    createdAt: new Date().toISOString()
-  }
-];
-
 function createdAt(record: { createdAt?: Date | string }) {
   return record.createdAt ? new Date(record.createdAt).toISOString() : new Date().toISOString();
 }
@@ -103,7 +89,7 @@ function normalizeAuditLog(record: Partial<AdminAuditLog> & { _id?: unknown; cre
   };
 }
 
-function fallbackBenchmark(): AdminBenchmark {
+function defaultBenchmark(): AdminBenchmark {
   return { ...bengaluruBenchmark, effectiveDate: "2026-07-31", notes: "Independent benchmark assumptions." };
 }
 
@@ -166,35 +152,8 @@ async function adminUser() {
   return requireAdmin();
 }
 
-function assertDemoAdmin(user: AppUser) {
-  if (user.isDemo && user.role !== "admin") {
-    throw new Error("Demo worker cannot access admin data.");
-  }
-}
-
 export async function getAdminOverview() {
-  const user = await adminUser();
-  assertDemoAdmin(user);
-  if (isDemoUserId(user.clerkUserId)) {
-    return {
-      totalRegisteredUsers: 7,
-      activeWorkers: 6,
-      jobsLogged: 24,
-      jobsFlaggedAsUnderpaid: 5,
-      fairnessDistribution: [
-        { bucket: "Fair", count: 12 },
-        { bucket: "Borderline", count: 7 },
-        { bucket: "Underpaid", count: 5 }
-      ],
-      complaintsGenerated: 4,
-      pendingIncidentReports: 2,
-      pendingCommunitySubmissions: 3,
-      platformCount: seededPlatforms.length,
-      benchmarkVersion: bengaluruBenchmark.version,
-      recentAdminActivity: demoAuditLogs
-    };
-  }
-
+  await adminUser();
   await requireMongo();
   const [totalRegisteredUsers, activeWorkers, jobsLogged, complaintsGenerated, pendingIncidentReports, pendingCommunitySubmissions, platformCount, recentAdminActivity] =
     await Promise.all([
@@ -228,61 +187,49 @@ export async function getAdminOverview() {
 }
 
 export async function listAdminUsers(): Promise<AdminUserSummary[]> {
-  const user = await adminUser();
-  if (isDemoUserId(user.clerkUserId)) {
-    return [
-      { id: "demo-worker", displayName: "Demo Worker", role: "worker", workerType: "food-delivery", city: "Bengaluru", platformsUsed: ["Swiggy"], onboardingCompleted: true, status: "active", createdAt: new Date().toISOString() },
-      { id: "demo-admin", displayName: "Demo Admin", role: "admin", workerType: "food-delivery", city: "Bengaluru", platformsUsed: [], onboardingCompleted: true, status: "active", createdAt: new Date().toISOString() }
-    ];
-  }
+  await adminUser();
   await requireMongo();
   const records = await UserProfileModel.find({}).select("clerkUserId displayName role workerType city platformsUsed onboardingCompleted status createdAt").sort({ createdAt: -1 }).lean();
   return (records as Array<Partial<AdminUserSummary> & { _id?: unknown; createdAt?: Date | string; clerkUserId?: string }>).map(normalizeAdminUser);
 }
 
 export async function listAdminPlatforms(): Promise<AdminPlatformSummary[]> {
-  const user = await adminUser();
-  if (isDemoUserId(user.clerkUserId)) return seededPlatforms;
+  await adminUser();
   await requireMongo();
   const records = await PlatformModel.find({}).sort({ displayOrder: 1 }).lean();
   return records.length > 0 ? (records as Array<Partial<AdminPlatformSummary> & { _id?: unknown; createdAt?: Date | string }>).map(normalizePlatform) : seededPlatforms;
 }
 
 export async function listAdminBenchmarks(): Promise<AdminBenchmark[]> {
-  const user = await adminUser();
-  if (isDemoUserId(user.clerkUserId)) return [fallbackBenchmark()];
+  await adminUser();
   await requireMongo();
   const records = await BenchmarkConfigurationModel.find({}).sort({ effectiveDate: -1 }).lean();
-  return records.length > 0 ? (records as Array<Partial<AdminBenchmark> & { _id?: unknown; createdAt?: Date | string; effectiveDate?: Date | string }>).map(normalizeBenchmark) : [fallbackBenchmark()];
+  return records.length > 0 ? (records as Array<Partial<AdminBenchmark> & { _id?: unknown; createdAt?: Date | string; effectiveDate?: Date | string }>).map(normalizeBenchmark) : [defaultBenchmark()];
 }
 
 export async function listAdminCommunity(): Promise<AdminGenericRecord[]> {
-  const user = await adminUser();
-  if (isDemoUserId(user.clerkUserId)) return [];
+  await adminUser();
   await requireMongo();
   const records = await CommunityJobModel.find({}).sort({ createdAt: -1 }).limit(50).lean();
   return (records as Array<Record<string, unknown> & { _id?: unknown; createdAt?: Date | string }>).map(normalizeGenericRecord);
 }
 
 export async function listAdminIncidents(): Promise<AdminGenericRecord[]> {
-  const user = await adminUser();
-  if (isDemoUserId(user.clerkUserId)) return [];
+  await adminUser();
   await requireMongo();
   const records = await IncidentModel.find({}).sort({ createdAt: -1 }).limit(50).lean();
   return (records as Array<Record<string, unknown> & { _id?: unknown; createdAt?: Date | string }>).map(normalizeGenericRecord);
 }
 
 export async function listAdminRights(): Promise<AdminGenericRecord[]> {
-  const user = await adminUser();
-  if (isDemoUserId(user.clerkUserId)) return [];
+  await adminUser();
   await requireMongo();
   const records = await RightsSnippetModel.find({}).sort({ theme: 1 }).lean();
   return (records as Array<Record<string, unknown> & { _id?: unknown; createdAt?: Date | string }>).map(normalizeGenericRecord);
 }
 
 export async function listAdminAuditLogs(): Promise<AdminAuditLog[]> {
-  const user = await adminUser();
-  if (isDemoUserId(user.clerkUserId)) return demoAuditLogs;
+  await adminUser();
   await requireMongo();
   const records = await AuditLogModel.find({}).sort({ createdAt: -1 }).limit(100).lean();
   return (records as Array<Partial<AdminAuditLog> & { _id?: unknown; createdAt?: Date | string }>).map(normalizeAuditLog);
@@ -297,19 +244,6 @@ export async function recordAuditLog(args: {
   reason?: string;
   requestId?: string;
 }) {
-  if (isDemoUserId(args.actor.clerkUserId)) {
-    demoAuditLogs.unshift({
-      id: `demo-audit-${Date.now()}`,
-      actorClerkUserId: args.actor.clerkUserId,
-      actorRole: args.actor.role,
-      action: args.action,
-      resourceType: args.resourceType,
-      resourceId: args.resourceId ?? "",
-      metadata: args.metadata ?? {},
-      createdAt: new Date().toISOString()
-    });
-    return;
-  }
   await requireMongo();
   await AuditLogModel.create({
     actorClerkUserId: args.actor.clerkUserId,

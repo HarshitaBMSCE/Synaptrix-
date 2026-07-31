@@ -32,42 +32,6 @@ export const screenshotExtractionSchema = z.object({
 
 export type ScreenshotExtraction = z.infer<typeof screenshotExtractionSchema>;
 
-export function demoScreenshotExtraction(): ScreenshotExtraction {
-  return {
-    platform: "Swiggy",
-    jobType: "delivery",
-    grossPayout: 112,
-    baseFare: 25,
-    incentives: 0,
-    tips: 0,
-    deductions: 15,
-    unexplainedDeductions: 15,
-    deductionReason: null,
-    distanceKm: 7.4,
-    durationMinutes: 34,
-    waitingMinutes: 8,
-    pickupDistanceKm: 1.2,
-    date: new Date().toISOString(),
-    originArea: "Indiranagar",
-    destinationArea: "Koramangala",
-    baseFareVisible: true,
-    distanceFareVisible: true,
-    waitingFareVisible: false,
-    incentiveVisible: false,
-    deductionReasonVisible: false,
-    taxVisible: false,
-    overallConfidence: 82,
-    fieldConfidence: {
-      platform: 94,
-      grossPayout: 90,
-      deductions: 72,
-      distanceKm: 85,
-      durationMinutes: 80
-    },
-    warnings: ["Demo extraction: deduction reason was not visible.", "Please confirm route distance before saving."]
-  };
-}
-
 export function stripJsonFences(text: string) {
   return text.replace(/^```(?:json)?/i, "").replace(/```$/i, "").trim();
 }
@@ -77,15 +41,20 @@ export function parseExtractionJson(text: string): ScreenshotExtraction {
   return screenshotExtractionSchema.parse(parsed);
 }
 
-function anthropic() {
-  return process.env.ANTHROPIC_API_KEY ? new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY }) : null;
+function requireAnthropic() {
+  if (!process.env.ANTHROPIC_API_KEY) {
+    throw new Error("ANTHROPIC_API_KEY is required for Claude screenshot extraction.");
+  }
+  return new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+}
+
+function anthropicModel() {
+  return process.env.ANTHROPIC_MODEL ?? "claude-3-5-sonnet-latest";
 }
 
 async function askClaudeForExtraction(image: { base64: string; mimeType: string }, correctionPrompt?: string) {
-  const client = anthropic();
-  if (!client) return demoScreenshotExtraction();
-  const response = await client.messages.create({
-    model: process.env.ANTHROPIC_MODEL ?? "claude-3-5-sonnet-latest",
+  const response = await requireAnthropic().messages.create({
+    model: anthropicModel(),
     max_tokens: 900,
     system:
       "Extract only structured gig job payment data. Return strict JSON only. Use null for unavailable fields. Do not calculate fairness scores.",
@@ -104,27 +73,29 @@ async function askClaudeForExtraction(image: { base64: string; mimeType: string 
       }
     ]
   });
-  return response.content.map((part) => (part.type === "text" ? part.text : "")).join("\n");
+  const text = response.content.map((part) => (part.type === "text" ? part.text : "")).join("\n").trim();
+  if (!text) throw new Error("Claude returned an empty screenshot extraction response.");
+  return text;
 }
 
-export async function extractScreenshotJob(image?: { buffer: Buffer; mimeType: string }, forceDemo = false) {
-  if (forceDemo || !image || !process.env.ANTHROPIC_API_KEY) {
-    return { extraction: demoScreenshotExtraction(), provider: "demo" as const };
+export async function extractScreenshotJob(image: { buffer: Buffer; mimeType: string }) {
+  if (!image.buffer.byteLength) {
+    throw new Error("A screenshot image is required for Claude extraction.");
   }
 
   const base64 = image.buffer.toString("base64");
   try {
     const first = await askClaudeForExtraction({ base64, mimeType: image.mimeType });
-    return { extraction: parseExtractionJson(typeof first === "string" ? first : JSON.stringify(first)), provider: "claude" as const };
+    return { extraction: parseExtractionJson(first), provider: "claude" as const };
   } catch (firstError) {
+    const corrected = await askClaudeForExtraction(
+      { base64, mimeType: image.mimeType },
+      `Your previous response failed validation: ${firstError instanceof Error ? firstError.message : "invalid JSON"}. Return corrected strict JSON only.`
+    );
     try {
-      const corrected = await askClaudeForExtraction(
-        { base64, mimeType: image.mimeType },
-        `Your previous response failed validation: ${firstError instanceof Error ? firstError.message : "invalid JSON"}. Return corrected strict JSON only.`
-      );
-      return { extraction: parseExtractionJson(typeof corrected === "string" ? corrected : JSON.stringify(corrected)), provider: "claude" as const };
-    } catch {
-      return { extraction: demoScreenshotExtraction(), provider: "demo" as const };
+      return { extraction: parseExtractionJson(corrected), provider: "claude" as const };
+    } catch (secondError) {
+      throw new Error(`Claude screenshot extraction failed validation: ${secondError instanceof Error ? secondError.message : "invalid JSON"}`);
     }
   }
 }

@@ -66,7 +66,7 @@ export default async function SettingsPage() {
               <div className="p-3.5 rounded-xl border border-slate-100 bg-slate-50 text-[10px] text-slate-500 leading-relaxed flex items-start gap-2">
                 <Info size={14} className="text-primary shrink-0 mt-0.5" />
                 <span>
-                  <strong>Server Fallback Status:</strong> A local deterministic Bengaluru baseline remains active to scoring jobs even if the third-party OpenRouteService provider experiences connectivity failure.
+                  <strong>Routing Status:</strong> Route geometry is requested from OpenRouteService using server-side credentials. Fairness scoring remains deterministic and independent from map providers.
                 </span>
               </div>
             </div>

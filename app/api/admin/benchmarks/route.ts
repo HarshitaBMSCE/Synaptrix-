@@ -4,7 +4,6 @@ import { requireAdmin } from "@/lib/auth";
 import { recordAuditLog } from "@/lib/admin";
 import { BenchmarkConfigurationModel } from "@/lib/models";
 import { requireMongo } from "@/lib/mongo";
-import { isDemoUserId } from "@/lib/demo-provider";
 
 const benchmarkUpdateSchema = z.object({
   version: z.string().min(3).max(80),
@@ -25,10 +24,6 @@ export async function POST(request: Request) {
   try {
     const actor = await requireAdmin();
     const input = benchmarkUpdateSchema.parse(await request.json());
-    if (isDemoUserId(actor.clerkUserId)) {
-      await recordAuditLog({ actor, action: "benchmark.updated", resourceType: "BenchmarkConfiguration", resourceId: input.version, metadata: input });
-      return ok({ ...input, demo: true }, { status: 201 });
-    }
     await requireMongo();
     const record = await BenchmarkConfigurationModel.create({
       ...input,

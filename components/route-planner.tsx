@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Badge, inputClass } from "@/components/ui";
 import type { RouteOption } from "@/lib/types";
-import { Navigation, Cloud, AlertCircle } from "lucide-react";
+import { Navigation, Cloud } from "lucide-react";
 
 export function RoutePlanner() {
   const [origin, setOrigin] = useState("Indiranagar");
@@ -61,7 +61,7 @@ export function RoutePlanner() {
         <div className="space-y-4">
           <div className="flex items-center justify-between border-b border-slate-50 pb-2">
             <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wide">Route Alternatives</h4>
-            <Badge tone="amber">Demo route data</Badge>
+            <Badge tone="green">Route results</Badge>
           </div>
 
           <div className="grid gap-4 md:grid-cols-2">
@@ -109,13 +109,6 @@ export function RoutePlanner() {
                       ))}
                     </div>
                   </div>
-
-                  {route.fallbackReason ? (
-                    <div className="flex items-center gap-1.5 rounded-lg bg-amber-50 p-2.5 text-[10px] text-amber-800 font-semibold leading-normal">
-                      <AlertCircle size={12} className="shrink-0" />
-                      <span>{route.fallbackReason}</span>
-                    </div>
-                  ) : null}
                 </div>
               );
             })}

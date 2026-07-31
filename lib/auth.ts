@@ -1,6 +1,4 @@
 import { auth, currentUser } from "@clerk/nextjs/server";
-import { cookies } from "next/headers";
-import { demoUserIdForRole } from "@/lib/demo-provider";
 import { connectMongo } from "@/lib/mongo";
 import { UserProfileModel } from "@/lib/models";
 
@@ -9,7 +7,6 @@ export type AppRole = "worker" | "admin";
 export type AppUser = {
   clerkUserId: string;
   role: AppRole;
-  isDemo: boolean;
   email?: string;
   displayName?: string;
 };
@@ -35,18 +32,8 @@ export class SuspendedUserError extends Error {
   }
 }
 
-export function isDemoMode() {
-  return process.env.DEMO_MODE === "true";
-}
-
 function roleFromValue(value: unknown): AppRole {
   return value === "admin" ? "admin" : "worker";
-}
-
-async function demoRoleFromCookie(): Promise<AppRole | null> {
-  const role = (await cookies()).get("gigshield_demo_role")?.value;
-  if (role === "worker" || role === "admin") return role;
-  return null;
 }
 
 export async function getCurrentUserId() {
@@ -54,19 +41,6 @@ export async function getCurrentUserId() {
 }
 
 export async function requireAuthenticatedUser(): Promise<AppUser> {
-  if (isDemoMode()) {
-    const demoRole = await demoRoleFromCookie();
-    if (demoRole) {
-      return {
-        clerkUserId: process.env.SEED_DEMO_USER_ID ?? demoUserIdForRole(demoRole),
-        role: demoRole,
-        isDemo: true,
-        email: `${demoRole}@demo.gigshield.local`,
-        displayName: demoRole === "admin" ? "Demo Admin" : "Demo Worker"
-      };
-    }
-  }
-
   const clerkConfigured = Boolean(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY && process.env.CLERK_SECRET_KEY);
   if (!clerkConfigured) {
     throw new AuthRequiredError("Clerk is not configured. Add Clerk keys to .env.local before using private data.");
@@ -85,7 +59,6 @@ export async function requireAuthenticatedUser(): Promise<AppUser> {
   const appUser = {
     clerkUserId: session.userId,
     role: bootstrapById || bootstrapByEmail ? "admin" : metadataRole,
-    isDemo: false,
     email,
     displayName: user?.fullName ?? user?.firstName ?? undefined
   };

@@ -1,119 +1,160 @@
 import Anthropic from "@anthropic-ai/sdk";
+import type { Message } from "@anthropic-ai/sdk/resources/messages";
+import { z } from "zod";
 import { getRightsSnippet } from "@/lib/rights-pack";
 import type { Complaint, Job } from "@/lib/types";
 
-function anthropic() {
-  return process.env.ANTHROPIC_API_KEY ? new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY }) : null;
+const platformSchema = z.enum(["Swiggy", "Zomato", "Blinkit", "Uber", "Ola", "Rapido"]);
+const jobTypeSchema = z.enum(["delivery", "ride", "courier", "service"]);
+
+export const voiceExtractionSchema = z.object({
+  platform: platformSchema.nullable(),
+  jobType: jobTypeSchema.nullable(),
+  grossPayout: z.number().nonnegative().nullable(),
+  baseFare: z.number().nonnegative().nullable(),
+  incentives: z.number().nonnegative().nullable(),
+  tips: z.number().nonnegative().nullable(),
+  deductions: z.number().nonnegative().nullable(),
+  unexplainedDeductions: z.number().nonnegative().nullable(),
+  distanceKm: z.number().nonnegative().nullable(),
+  durationMinutes: z.number().nonnegative().nullable(),
+  waitingMinutes: z.number().nonnegative().nullable(),
+  pickupDistanceKm: z.number().nonnegative().nullable(),
+  originArea: z.string().nullable(),
+  destinationArea: z.string().nullable(),
+  overallConfidence: z.number().min(0).max(100),
+  warnings: z.array(z.string())
+});
+
+const complaintDraftSchema = z.object({
+  subject: z.string().min(3),
+  body: z.string().min(20),
+  requestedRemedy: z.string().min(3)
+});
+
+const weeklyNarrativeSchema = z.object({
+  insight: z.string().min(1),
+  risk: z.string().min(1),
+  action: z.string().min(1),
+  narrative: z.string().min(1)
+});
+
+function requireAnthropic() {
+  if (!process.env.ANTHROPIC_API_KEY) {
+    throw new Error("ANTHROPIC_API_KEY is required for Claude-powered features.");
+  }
+  return new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+}
+
+function anthropicModel() {
+  return process.env.ANTHROPIC_MODEL ?? "claude-3-5-sonnet-latest";
+}
+
+function stripJsonFences(text: string) {
+  return text.replace(/^```(?:json)?/i, "").replace(/```$/i, "").trim();
+}
+
+function responseText(response: Message) {
+  const text = response.content.map((part) => (part.type === "text" ? part.text : "")).join("\n").trim();
+  if (!text) throw new Error("Claude returned an empty response.");
+  return text;
+}
+
+export function parseVoiceExtractionJson(text: string) {
+  return voiceExtractionSchema.parse(JSON.parse(stripJsonFences(text)) as unknown);
 }
 
 export async function parseVoiceTranscript(transcript: string, language = "en-IN") {
-  const lower = transcript.toLowerCase();
-  const payout = Number(lower.match(/(?:paid|payout|for|₹|rs\.?)\s*(\d+(?:\.\d+)?)/)?.[1] ?? lower.match(/(\d+(?:\.\d+)?)\s*rupees/)?.[1] ?? 0);
-  const distance = Number(lower.match(/(\d+(?:\.\d+)?)\s*(?:km|kilomet)/)?.[1] ?? 0);
-  const minutes = Number(lower.match(/(\d+)\s*(?:min|minutes)/)?.[1] ?? lower.match(/took\s*(\d+)/)?.[1] ?? 0);
-  const deduction = Number(lower.match(/deduction\s*of\s*(\d+(?:\.\d+)?)/)?.[1] ?? lower.match(/(\d+(?:\.\d+)?)\s*(?:rupees|rs\.?)\s*deduct/)?.[1] ?? lower.match(/deducted\s*(\d+(?:\.\d+)?)/)?.[1] ?? 0);
-  const waiting = Number(lower.match(/waited\s*(?:for)?\s*(\d+)/)?.[1] ?? lower.match(/waiting\s*(?:for)?\s*(\d+)/)?.[1] ?? 0);
-  const platform = lower.includes("zomato") ? "Zomato" : lower.includes("blinkit") ? "Blinkit" : lower.includes("uber") ? "Uber" : lower.includes("rapido") ? "Rapido" : "Swiggy";
+  const response = await requireAnthropic().messages.create({
+    model: anthropicModel(),
+    max_tokens: 700,
+    system:
+      "Extract structured gig job facts from a worker transcript. Return strict JSON only. Use null for unavailable facts. Use jobType values delivery, ride, courier, or service. Do not calculate fairness scores.",
+    messages: [
+      {
+        role: "user",
+        content: JSON.stringify({
+          language,
+          transcript,
+          requiredKeys: [
+            "platform",
+            "jobType",
+            "grossPayout",
+            "baseFare",
+            "incentives",
+            "tips",
+            "deductions",
+            "unexplainedDeductions",
+            "distanceKm",
+            "durationMinutes",
+            "waitingMinutes",
+            "pickupDistanceKm",
+            "originArea",
+            "destinationArea",
+            "overallConfidence",
+            "warnings"
+          ]
+        })
+      }
+    ]
+  });
 
+  const parsed = parseVoiceExtractionJson(responseText(response));
   return {
-    platform,
-    jobType: platform === "Uber" || platform === "Rapido" ? "ride" : "delivery",
-    grossPayout: payout,
-    baseFare: 25,
-    incentives: 0,
-    tips: 0,
-    deductions: deduction,
-    unexplainedDeductions: deduction,
-    platformDistanceKm: distance,
-    routeDistanceKm: distance,
-    pickupDistanceKm: 1,
-    activeMinutes: minutes,
-    waitingMinutes: waiting,
-    originArea: "Bengaluru pickup area",
-    destinationArea: "Bengaluru drop area",
-    extractionConfidence: 78,
-    language,
-    warnings: anthropic() ? [] : ["Provider fallback parsed the transcript. Review all fields before saving."]
-  } as const;
+    platform: parsed.platform ?? "Swiggy",
+    jobType: parsed.jobType ?? "delivery",
+    grossPayout: parsed.grossPayout ?? 0,
+    baseFare: parsed.baseFare ?? 0,
+    incentives: parsed.incentives ?? 0,
+    tips: parsed.tips ?? 0,
+    deductions: parsed.deductions ?? 0,
+    unexplainedDeductions: parsed.unexplainedDeductions ?? parsed.deductions ?? 0,
+    platformDistanceKm: parsed.distanceKm ?? 0,
+    routeDistanceKm: parsed.distanceKm ?? 0,
+    pickupDistanceKm: parsed.pickupDistanceKm ?? 0,
+    activeMinutes: parsed.durationMinutes ?? 0,
+    waitingMinutes: parsed.waitingMinutes ?? 0,
+    originArea: parsed.originArea ?? "",
+    destinationArea: parsed.destinationArea ?? "",
+    extractionConfidence: parsed.overallConfidence,
+    warnings: parsed.warnings
+  };
 }
 
 export async function explainAssistantAnswer(args: { message: string; job?: Job | null; language?: string }) {
   const rights = getRightsSnippet(args.message.includes("deduct") ? "Clear deductions" : "Payment transparency");
-  const client = anthropic();
-  const fallbackAnswer = () => {
-    const jobFacts = args.job
-      ? `For ${args.job.platform} job ${args.job.id}, net payout was ₹${args.job.netPayout} over ${args.job.platformDistanceKm} km and ${args.job.activeMinutes} active minutes.`
-      : "I can use your recent jobs and dashboard totals to answer this.";
-    return `${jobFacts} Relevant theme: ${rights.theme}. ${rights.snippet} This is general information for ${rights.jurisdiction}, not legal advice.`;
-  };
-
-  if (!client) {
-    return fallbackAnswer();
-  }
-
-  try {
-    const response = await client.messages.create({
-      model: "claude-3-5-sonnet-latest",
-      max_tokens: 450,
-      system:
-        "You are GigShield's worker-rights assistant. Use only supplied facts. Distinguish product guidance from legal advice. Never invent platform policy.",
-      messages: [
-        {
-          role: "user",
-          content: JSON.stringify({ question: args.message, job: args.job, rights })
-        }
-      ]
-    });
-    return response.content.map((part) => (part.type === "text" ? part.text : "")).join("\n");
-  } catch {
-    return fallbackAnswer();
-  }
+  const response = await requireAnthropic().messages.create({
+    model: anthropicModel(),
+    max_tokens: 450,
+    system:
+      "You are GigShield's worker-rights assistant. Use only supplied facts. Distinguish product guidance from legal information. Never invent platform policy.",
+    messages: [
+      {
+        role: "user",
+        content: JSON.stringify({ question: args.message, job: args.job, rights, language: args.language ?? "en-IN" })
+      }
+    ]
+  });
+  return responseText(response);
 }
 
 export async function draftComplaint(args: { jobs: Job[]; type: Complaint["type"]; tone: Complaint["tone"] }) {
-  const primary = args.jobs[0];
-  const subject = `${args.type.replace(/-/g, " ")} review for ${args.jobs.length} job${args.jobs.length > 1 ? "s" : ""}`;
-  const body = [
-    `I am requesting a review of ${args.jobs.length} ${primary.platform} job record(s).`,
-    ...args.jobs.map(
-      (job) =>
-        `Job ${job.id}: ${job.originArea} to ${job.destinationArea}, completed ${new Date(job.completedAt).toLocaleString("en-IN")}, actual net payout ₹${job.netPayout}, gross ₹${job.grossPayout}, deductions ₹${job.deductions}.`
-    ),
-    "Relevant rights themes: Payment transparency, clear deductions, and grievance redressal.",
-    "Requested response date: [Please add date].",
-    "Unknown facts are intentionally left as placeholders: [Please add platform ticket number], [Please add worker platform ID]."
-  ].join("\n\n");
-
-  return { subject, body, requestedRemedy: "Please provide the calculation basis and correct any unsupported payment gap." };
+  const response = await requireAnthropic().messages.create({
+    model: anthropicModel(),
+    max_tokens: 900,
+    system:
+      "Draft an evidence-backed gig-platform complaint. Return strict JSON only with subject, body, and requestedRemedy. Use supplied job facts only and leave unknown facts as placeholders.",
+    messages: [{ role: "user", content: JSON.stringify(args) }]
+  });
+  return complaintDraftSchema.parse(JSON.parse(stripJsonFences(responseText(response))) as unknown);
 }
 
 export async function weeklyNarrative(metrics: unknown) {
-  const client = anthropic();
-  const fallbackNarrative = () => ({
-    insight: "Waiting time and deductions are the biggest levers this week.",
-    risk: "A long continuous session created a fatigue warning.",
-    action: "Prioritize shorter routes until the complaint draft is resolved.",
-    narrative: `Provider fallback insight generated from deterministic metrics: ${JSON.stringify(metrics).slice(0, 320)}`
+  const response = await requireAnthropic().messages.create({
+    model: anthropicModel(),
+    max_tokens: 500,
+    system: "Write concise weekly GigShield insights. Return strict JSON only with insight, risk, action, and narrative. Preserve every numeric value from the provided metrics.",
+    messages: [{ role: "user", content: JSON.stringify(metrics) }]
   });
-
-  if (!client) {
-    return fallbackNarrative();
-  }
-
-  try {
-    const response = await client.messages.create({
-      model: "claude-3-5-sonnet-latest",
-      max_tokens: 500,
-      system: "Write a concise weekly insight. Preserve every numeric value from the provided metrics.",
-      messages: [{ role: "user", content: JSON.stringify(metrics) }]
-    });
-    return {
-      insight: "Claude weekly insight",
-      risk: "See narrative",
-      action: "See narrative",
-      narrative: response.content.map((part) => (part.type === "text" ? part.text : "")).join("\n")
-    };
-  } catch {
-    return fallbackNarrative();
-  }
+  return weeklyNarrativeSchema.parse(JSON.parse(stripJsonFences(responseText(response))) as unknown);
 }

@@ -55,9 +55,7 @@ export default function HomePage() {
               <ButtonLink href="/sign-up">
                 Get started <ArrowRight className="ml-2" size={18} />
               </ButtonLink>
-              <ButtonLink href="/demo" variant="secondary">
-                Explore demo
-              </ButtonLink>
+              <ButtonLink href="/sign-in" variant="secondary">Sign in</ButtonLink>
             </div>
             <p className="mt-4 text-xs text-muted-foreground italic">
               * Independent estimates based on the information you provide. Not an official platform fare or legal determination.
@@ -224,8 +222,8 @@ export default function HomePage() {
           </div>
           <Card className="relative overflow-hidden">
             <div className="p-4 bg-slate-50 border border-slate-100 rounded-xl mb-6 text-sm text-[#202124] flex flex-wrap gap-2 items-center justify-between">
-              <span><strong>Sample Calculation:</strong> Swiggy Delivery (9 km)</span>
-              <Badge tone="green">Demo Example</Badge>
+              <span><strong>Benchmark walkthrough:</strong> Swiggy Delivery (9 km)</span>
+              <Badge tone="green">Illustration</Badge>
             </div>
             <div className="space-y-4">
               <div className="flex justify-between text-sm border-b border-slate-100 pb-2">
@@ -312,9 +310,7 @@ export default function HomePage() {
             <ButtonLink href="/sign-up">
               Create account
             </ButtonLink>
-            <ButtonLink href="/demo" variant="secondary">
-              Open demo
-            </ButtonLink>
+            <ButtonLink href="/sign-in" variant="secondary">Sign in</ButtonLink>
           </div>
         </div>
       </section>
@@ -338,15 +334,15 @@ export default function HomePage() {
             <ul className="space-y-2 text-xs">
               <li><Link href="#features" className="hover:text-white">Features</Link></li>
               <li><Link href="#workflow" className="hover:text-white">How it works</Link></li>
-              <li><Link href="/demo" className="hover:text-white">Seeded Demo</Link></li>
+              <li><Link href="/sign-up" className="hover:text-white">Create account</Link></li>
             </ul>
           </div>
           <div className="text-left">
             <h4 className="text-white text-sm font-bold uppercase tracking-wider mb-4">Safety & Privacy</h4>
             <ul className="space-y-2 text-xs">
               <li><Link href="#safety" className="hover:text-white">Safety notice</Link></li>
-              <li><span className="text-slate-500">Privacy policy (Demo)</span></li>
-              <li><span className="text-slate-500">Terms of service (Demo)</span></li>
+              <li><span className="text-slate-500">Privacy policy</span></li>
+              <li><span className="text-slate-500">Terms of service</span></li>
             </ul>
           </div>
         </div>

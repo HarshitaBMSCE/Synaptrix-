@@ -9,7 +9,7 @@ export async function POST(request: Request) {
     const userId = await getCurrentUserId();
     const sample = await addCommunityJob({
       ...input,
-      anonymousContributorId: userId.startsWith("demo-") ? userId : `hash-${userId.slice(-6)}`
+      anonymousContributorId: `hash-${userId.slice(-6)}`
     });
     return ok(sample, { status: 201 });
   } catch (error) {

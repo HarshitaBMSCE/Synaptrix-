@@ -4,7 +4,7 @@ import { requireAdmin } from "@/lib/auth";
 import { AdminNav } from "./admin-nav";
 
 export async function AdminShell({ title, children }: { title: string; children: React.ReactNode }) {
-  const user = await requireAdmin();
+  await requireAdmin();
   
   return (
     <main className="min-h-screen bg-[#F7F7F8] text-[#202124]">
@@ -21,9 +21,7 @@ export async function AdminShell({ title, children }: { title: string; children:
             </div>
           </div>
           <div className="flex items-center gap-3">
-            <Badge tone="green">
-              {user.isDemo ? "Demo Admin" : "Admin Workspace"}
-            </Badge>
+            <Badge tone="green">Admin Workspace</Badge>
             <Link href="/dashboard" className="text-xs font-bold text-slate-500 hover:text-primary transition-colors">
               Exit admin
             </Link>

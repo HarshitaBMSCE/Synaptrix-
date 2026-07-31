@@ -5,8 +5,8 @@ import { VoiceEntry } from "@/components/voice-entry";
 
 afterEach(() => cleanup());
 
-describe("VoiceEntry browser fallback", () => {
-  it("shows the typed fallback when speech recognition is unavailable", async () => {
+describe("VoiceEntry typed entry", () => {
+  it("shows typed entry when speech recognition is unavailable", async () => {
     const speechWindow = window as Window & {
       SpeechRecognition?: unknown;
       webkitSpeechRecognition?: unknown;

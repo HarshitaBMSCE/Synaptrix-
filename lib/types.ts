@@ -220,8 +220,7 @@ export type RouteOption = {
     label: string;
     coordinate: Coordinate | null;
   };
-  provider: "openrouteservice" | "deterministic-fallback";
-  fallbackReason?: string;
+  provider: "openrouteservice";
   safetyScore: number;
   classification: "Lower risk" | "Moderate risk" | "High risk" | "Very high risk";
   riskFactors: string[];
